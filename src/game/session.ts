@@ -656,7 +656,8 @@ export class GameSession {
       }
       this.eyeSmooth += (eyeHeight(me.body) - this.eyeSmooth) * Math.min(1, dt * 14);
       const dy = pos.y - this.lastViewY;
-      if (me.body.onGround && dy > 0.02 && dy < PHYS.stepHeight + 0.05) this.stepOffset -= dy;
+      // Smooth stair steps up and down (ground snapping moves the body in whole steps).
+      if (me.body.onGround && Math.abs(dy) > 0.02 && Math.abs(dy) < PHYS.stepHeight + 0.05) this.stepOffset -= dy;
       this.lastViewY = pos.y;
       this.stepOffset *= Math.exp(-dt * 14);
       cam.position.set(pos.x, pos.y + this.eyeSmooth + this.stepOffset, pos.z);

@@ -167,6 +167,17 @@ export function stepMovement(world: CollisionWorld, b: MoveBody, input: MoveInpu
       }
     }
   }
+  // Stay on the ground going down stairs or small ledges (as Source's
+  // StayOnGround): without this a player walking down steps is airborne for
+  // a few ticks per step, which costs air accuracy and skips footsteps.
+  if (!res.onGround && !wasAirborne && !jumped && b.vel.y <= 0) {
+    const p3 = { ...b.pos };
+    const down = world.moveHull(p3, PHYS.halfWidth, bodyHeight(b), { x: 0, y: -PHYS.stepHeight, z: 0 });
+    if (down.onGround) {
+      b.pos.y = p3.y;
+      res = { ...res, onGround: true };
+    }
+  }
   b.vel.y -= PHYS.gravity * dt * 0.5;
 
   if (res.onGround) {

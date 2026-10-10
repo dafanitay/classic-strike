@@ -11,6 +11,14 @@ import type { MapDef } from '../map';
  *   - South lane: roofed B Tunnels (also reachable from Mid via the Lower
  *                 Tunnel) opening onto B Site.
  *
+ * Elevation (1 m, low enough to jump up, too high to walk up):
+ *   - A Site is a raised platform. Stairs lead up from Long A, from the A
+ *     Ramp (defenders) and over the Catwalk to Short A, which stays high and
+ *     overlooks the site. Below its north-west and south edges are lower
+ *     pockets.
+ *   - B Doors is a raised balcony between Defender Spawn (stairs down the
+ *     B Ramp) and B Site: one narrow stair down, otherwise a drop.
+ *
  * Grid: 40 x 30 cells of 2 m (80 m x 60 m). x grows east, z grows south.
  */
 export const DEPOT: MapDef = {
@@ -48,13 +56,25 @@ export const DEPOT: MapDef = {
     { x: 21, z: 14 },
   ],
   crates: [
-    { x: 29, z: 4 }, { x: 30, z: 4 }, { x: 33, z: 7, tall: true }, { x: 28, z: 8 }, { x: 35, z: 3, tall: true },
+    { x: 29, z: 4 }, { x: 30, z: 4 }, { x: 31, z: 7, tall: true }, { x: 28, z: 8 }, { x: 35, z: 3, tall: true },
     { x: 10, z: 2 }, { x: 22, z: 4 },
     { x: 20, z: 12, tall: true }, { x: 23, z: 17 }, { x: 19, z: 16 },
     { x: 21, z: 23 }, { x: 22, z: 23 }, { x: 25, z: 25, tall: true }, { x: 20, z: 26 }, { x: 27, z: 22 },
     { x: 34, z: 15 },
     { x: 1, z: 11 },
     { x: 12, z: 13 },
+  ],
+  levels: [
+    { x0: 29, z0: 2, x1: 36, z1: 7, height: 1 }, // A Site platform
+    { x0: 21, z0: 6, x1: 28, z1: 7, height: 1 }, // Short A, level with the site
+    { x0: 29, z0: 22, x1: 34, z1: 23, height: 1 }, // B Doors balcony
+  ],
+  stairs: [
+    { x0: 28, z0: 2, x1: 28, z1: 4, dir: 'E', from: 0, to: 1 }, // Long A -> A Site
+    { x0: 32, z0: 8, x1: 34, z1: 8, dir: 'N', from: 0, to: 1 }, // A Ramp -> A Site
+    { x0: 21, z0: 8, x1: 23, z1: 10, dir: 'N', from: 0, to: 1 }, // Catwalk: Middle -> Short A
+    { x0: 31, z0: 19, x1: 34, z1: 21, dir: 'S', from: 0, to: 1 }, // B Ramp: Defender Spawn -> B Doors
+    { x0: 29, z0: 23, x1: 29, z1: 23, dir: 'E', from: 0, to: 1 }, // B Site -> B Doors
   ],
   roofs: [
     { x0: 7, z0: 24, x1: 18, z1: 26, height: 3.4 },

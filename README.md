@@ -25,6 +25,7 @@ Firefox), keyboard and mouse.
 | `npm test` | Unit tests + headless bot-vs-bot matches (Vitest) |
 | `npm run e2e` | Solo browser smoke test (needs `npm run dev` running; uses Playwright Chromium) |
 | `npm run e2e:feedback` | Browser checks for crosshair settings, hit marker, damage direction (needs `npm run dev`) |
+| `npm run e2e:elevation` | Walks up and down stairs with real key input and screenshots each raised area (needs `npm run dev`) |
 | `npm run e2e:mp` | Two-browser online test (needs `npm run build && PORT=8090 CS_DEBUG=1 npm start`, then `node tests/e2e/multiplayer.mjs http://127.0.0.1:8090`) |
 
 ## Controls
@@ -75,14 +76,20 @@ Key decisions:
 - **Grid-carved maps.** A map starts solid; walkable areas are carved out as
   rectangles. No gaps in the shell are possible, and the grid doubles as the
   bot navigation graph. Add a map by writing another `MapDef` and listing it in
-  `MAPS`.
+  `MAPS`. Elevation is 2.5D: `levels` raise whole cells and `stairs` rise
+  across a rectangle in 0.2 m steps (players climb up to 0.457 m without
+  jumping, as in the classic games). Each cell has one floor, so there are no
+  bridges or overpasses. Bots path up stairs and may drop off ledges, but
+  never path up a ledge they would have to jump.
 - **No infrastructure for single-player.** It is a static site; no account,
   database or server. Solo keeps working when the game server is down.
 - **Authoritative server for online play.** Clients send only input commands
   (validated and clamped), buy requests, team choice and rematch requests.
   Movement, hits, damage, deaths, money and rounds are all computed by the
   server's `Simulation`. Networked players move only when one of their
-  commands is processed, so client prediction replays exactly (unit-tested).
+  commands is processed, so client prediction replays exactly (unit-tested,
+  including on stairs and ledges): each client's own position and velocity
+  are sent unrounded for that reason.
   Shots are lag-compensated (others rewound by the shooter's RTT +
   interpolation delay, max 0.5 s). Snapshots go out at 20 Hz; remote players
   render 100 ms in the past.

@@ -74,13 +74,15 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   // ---- floors: one quad per area, grouped by floor kind
   const floorGeos: Record<FloorKind, THREE.BufferGeometry[]> = { sand: [], concrete: [], tile: [], dirt: [] };
   const floorTex: Record<FloorKind, Parameters<typeof surface>[0]> = { sand: 'sand', concrete: 'concrete', tile: 'tile', dirt: 'dirt' };
-  // Paint floors per cell so overlapping areas don't z-fight.
+  // Paint floors per cell (at the cell's floor height) so overlapping areas
+  // don't z-fight. Stair cells are drawn by their step boxes instead.
   for (let z = 0; z < map.def.rows; z++) {
     for (let x = 0; x < map.def.cols; x++) {
       const ai = map.areaIndex[z * map.def.cols + x];
-      if (ai < 0) continue;
+      if (ai < 0 || map.stairAt(x, z) >= 0) continue;
       const kind = map.def.areas[ai].floor;
-      floorGeos[kind].push(boxGeometry({ min: { x: x * cs, y: -0.1, z: z * cs }, max: { x: (x + 1) * cs, y: 0, z: (z + 1) * cs } }, surface(floorTex[kind]).worldSize, ['py']));
+      const h = map.cellCenter(x, z).y;
+      floorGeos[kind].push(boxGeometry({ min: { x: x * cs, y: h - 0.1, z: z * cs }, max: { x: (x + 1) * cs, y: h, z: (z + 1) * cs } }, surface(floorTex[kind]).worldSize, ['py']));
     }
   }
   for (const kind of Object.keys(floorGeos) as FloorKind[]) addMerged(floorGeos[kind], mat(floorTex[kind]), false, true);
@@ -89,15 +91,32 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   const wallGeos: THREE.BufferGeometry[] = [];
   const crateGeos: THREE.BufferGeometry[] = [];
   const roofGeos: THREE.BufferGeometry[] = [];
+  const platformGeos: THREE.BufferGeometry[] = [];
+  const stepGeos: THREE.BufferGeometry[] = [];
   const wallTex = surface('wall').worldSize;
   for (const b of map.boxes as BuiltBox[]) {
     if (b.kind === 'wall') wallGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz', 'py']));
     else if (b.kind === 'crate') crateGeos.push(boxGeometry(b, surface('crate').worldSize));
     else if (b.kind === 'roof') roofGeos.push(boxGeometry(b, surface('roof').worldSize));
+    // Raised floors: only the sides (the top is the painted floor above).
+    else if (b.kind === 'platform') platformGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz']));
+    else if (b.kind === 'step') stepGeos.push(boxGeometry(b, surface('concrete').worldSize, ['px', 'nx', 'pz', 'nz', 'py']));
   }
   addMerged(wallGeos, mat('wall'), true, true);
   addMerged(crateGeos, mat('crate'), true, true);
   addMerged(roofGeos, mat('roof', 0xbbbbbb), true, true);
+  // Darker than the floors so ledge edges read clearly from above and below.
+  addMerged(platformGeos, mat('wall', 0x9c8a70), true, true);
+  addMerged(stepGeos, mat('concrete', 0xd6d0c4), true, true);
+
+  // Ledge lips: a thin dark band along every raised edge, so a drop is
+  // visible at a glance (stair edges are left plain).
+  const lipGeos: THREE.BufferGeometry[] = [];
+  for (const b of map.boxes as BuiltBox[]) {
+    if (b.kind !== 'platform') continue;
+    lipGeos.push(boxGeometry({ min: { x: b.min.x - 0.02, y: b.max.y - 0.06, z: b.min.z - 0.02 }, max: { x: b.max.x + 0.02, y: b.max.y + 0.005, z: b.max.z + 0.02 } }, 2, ['px', 'nx', 'pz', 'nz']));
+  }
+  addMerged(lipGeos, new THREE.MeshLambertMaterial({ color: 0x5a4a36 }), false, false);
 
   // ---- wall trim: a darker band at the top edge of every wall for readability
   const trimGeos: THREE.BufferGeometry[] = [];
@@ -119,7 +138,7 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   };
   for (const site of ['A', 'B'] as const) {
     const c = map.rectCenter(map.def.bombsites[site]);
-    decal(labelTexture(site), 5, new THREE.Vector3(c.x, 0.02, c.z), -Math.PI / 2);
+    decal(labelTexture(site), 5, new THREE.Vector3(c.x, c.y + 0.02, c.z), -Math.PI / 2);
   }
   // Signs are placed on the wall face nearest to junction cells.
   const addSign = (text: string, cx: number, cz: number) => {
@@ -128,7 +147,7 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
     for (const [dx, dz, rot] of dirs) {
       if (map.cell(cx + dx, cz + dz) !== 0) continue;
       const c = map.cellCenter(cx, cz);
-      const pos = new THREE.Vector3(c.x + dx * (cs / 2 - 0.02), 2.4, c.z + dz * (cs / 2 - 0.02));
+      const pos = new THREE.Vector3(c.x + dx * (cs / 2 - 0.02), c.y + 2.4, c.z + dz * (cs / 2 - 0.02));
       decal(labelTexture(text, '#f2e3c0', 'rgba(40,30,20,0.85)'), 1.4, pos, 0, rot);
       return;
     }
