@@ -71,6 +71,18 @@ export function gunModel(id: string, cls: WeaponClass, firstPerson: boolean): TH
       if (id === 'k4') part(g, 0.02, 0.05, 0.08, 0, 0.08, -0.05, METAL, lit); // carry handle
       muzzle.position.set(0, 0.03, -0.65);
       break;
+    case 'grenade': {
+      // Held in the palm: HE is a round olive body, the flashbang a pale
+      // cylinder, the smoke a grey canister; all with a lever and pin.
+      const body = id === 'he' ? 0x4b5a32 : id === 'flash' ? 0x9aa3a8 : 0x5d6266;
+      if (id === 'he') part(g, 0.07, 0.08, 0.07, 0, 0.0, -0.06, body, lit);
+      else part(g, 0.055, 0.11, 0.055, 0, 0.01, -0.06, body, lit);
+      part(g, 0.02, 0.03, 0.02, 0, 0.065, -0.06, METAL_LIGHT, lit); // fuse head
+      part(g, 0.012, 0.09, 0.02, 0.03, 0.02, -0.06, METAL, lit); // lever
+      if (id !== 'he') part(g, 0.058, 0.015, 0.058, 0, 0.04, -0.06, id === 'flash' ? 0x2e3134 : 0xc9c2a8, lit); // band
+      muzzle.position.set(0, 0.05, -0.08);
+      break;
+    }
     case 'mg':
       // Belt-fed: long receiver, box magazine underneath, bipod, carry handle.
       part(g, 0.035, 0.11, 0.05, 0, -0.05, 0.02, POLY, lit);

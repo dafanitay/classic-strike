@@ -17,9 +17,11 @@ export type WeaponId =
   // snipers
   | 'kestrel' | 'longbow' | 'rp3' | 'vg5'
   // machine gun
-  | 'mg9';
-export type WeaponSlot = 1 | 2 | 3;
-export type WeaponClass = 'melee' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'sniper' | 'mg';
+  | 'mg9'
+  // grenades (slot 4)
+  | 'he' | 'flash' | 'smoke';
+export type WeaponSlot = 1 | 2 | 3 | 4;
+export type WeaponClass = 'melee' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'sniper' | 'mg' | 'grenade';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -254,7 +256,59 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     drawTime: 1.0, spreadBase: 0.6 * DEG, spreadMove: 3.6 * DEG, spreadAir: 9 * DEG, spreadPerShot: 0.05 * DEG, spreadMax: 1.6 * DEG, spreadRecovery: 2.5 * DEG, crouchFactor: 0.7,
     recoilPattern: [[0, 0, 0], [1, 0, 0.8], [5, 0.3, 3.2], [10, -0.8, 5.4], [18, 1.4, 6.6], [30, -1.6, 7.4], [50, 1.0, 8.0], [99, 0, 8.4]], recoilTau: 0.14, killReward: 300,
   },
+  // --------------------------------------------------------------- grenades
+  he: {
+    id: 'he', name: 'HE Grenade', slot: 4, cls: 'grenade', price: 300,
+    damage: 0, pellets: 1, cycle: 0.9, automatic: false, magSize: 1, reserve: 0, reloadTime: 0,
+    rangeModifier: 1, range: 0, armorPen: 1, maxSpeed: 250 * 0.0254,
+    drawTime: 0.5, spreadBase: 0, spreadMove: 0, spreadAir: 0, spreadPerShot: 0, spreadMax: 0, spreadRecovery: 1, crouchFactor: 1,
+    recoilPattern: [], recoilTau: 0.1, killReward: 300,
+  },
+  flash: {
+    id: 'flash', name: 'Flashbang', slot: 4, cls: 'grenade', price: 200,
+    damage: 0, pellets: 1, cycle: 0.9, automatic: false, magSize: 1, reserve: 0, reloadTime: 0,
+    rangeModifier: 1, range: 0, armorPen: 1, maxSpeed: 250 * 0.0254,
+    drawTime: 0.5, spreadBase: 0, spreadMove: 0, spreadAir: 0, spreadPerShot: 0, spreadMax: 0, spreadRecovery: 1, crouchFactor: 1,
+    recoilPattern: [], recoilTau: 0.1, killReward: 300,
+  },
+  smoke: {
+    id: 'smoke', name: 'Smoke Grenade', slot: 4, cls: 'grenade', price: 300,
+    damage: 0, pellets: 1, cycle: 0.9, automatic: false, magSize: 1, reserve: 0, reloadTime: 0,
+    rangeModifier: 1, range: 0, armorPen: 1, maxSpeed: 250 * 0.0254,
+    drawTime: 0.5, spreadBase: 0, spreadMove: 0, spreadAir: 0, spreadPerShot: 0, spreadMax: 0, spreadRecovery: 1, crouchFactor: 1,
+    recoilPattern: [], recoilTau: 0.1, killReward: 300,
+  },
 };
+
+export type NadeType = 'he' | 'flash' | 'smoke';
+export const NADE_TYPES: NadeType[] = ['he', 'flash', 'smoke'];
+export const isNade = (id: WeaponId): id is NadeType => id === 'he' || id === 'flash' || id === 'smoke';
+
+/**
+ * Grenade behaviour (metres, seconds). Carry limits as in the classic game:
+ * one HE, two flashbangs, one smoke.
+ */
+export const NADE = {
+  max: { he: 1, flash: 2, smoke: 1 } as Record<NadeType, number>,
+  throwSpeed: 15,
+  /** Right click: a short underhand lob. */
+  lobSpeed: 7,
+  gravity: 13,
+  bounce: 0.45,
+  fuse: { he: 1.6, flash: 1.6, smoke: 3 } as Record<NadeType, number>,
+  heRadius: 9.5,
+  heDamage: 98,
+  flashRadius: 30,
+  /** Longest full blindness (s), when the flash goes off right in front of you. */
+  flashFull: 2.2,
+  /** Plus this long fading back (s). */
+  flashFade: 2.6,
+  smokeRadius: 4.2,
+  smokeDuration: 15,
+  /** Seconds for a smoke to reach full size, and to thin out at the end. */
+  smokeGrow: 1.2,
+  smokeFade: 2,
+} as const;
 
 /** Buy-menu order, grouped like the classic menu (1 pistols … 5 machine gun). */
 export const BUYABLE: WeaponId[] = [

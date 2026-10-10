@@ -4,6 +4,7 @@ import type { MapData, Team } from '../shared/map';
 import type { Quality } from '../settings';
 import { Avatar } from './characters';
 import { Effects } from './effects';
+import { NadeView } from './nades';
 import { ViewModel, flashTexture, puffTexture } from './viewmodel';
 import { buildSky, buildWorld, type WorldMeshes } from './world';
 
@@ -16,6 +17,7 @@ export class GameRenderer {
   readonly effects: Effects;
   readonly muzzleLight = new THREE.PointLight(0xffc070, 0, 9, 2);
   readonly bomb = new BombModel();
+  readonly nades: NadeView;
   private readonly sun = new THREE.DirectionalLight(0xffe8c4, 3.1);
   private readonly map: MapData;
   private world: WorldMeshes | null = null;
@@ -62,6 +64,8 @@ export class GameRenderer {
     const flash = flashTexture();
     this.viewmodel = new ViewModel(flash);
     this.effects = new Effects(puffTexture(), flash);
+    this.nades = new NadeView(puffTexture());
+    this.scene.add(this.nades.group);
     this.scene.add(this.effects.group);
     this.scene.add(this.bomb.group);
     this.applyQuality(quality);
@@ -147,6 +151,7 @@ export class GameRenderer {
     for (const id of this.avatarIds()) this.removeAvatar(id);
     this.world?.dispose();
     this.bomb.dispose();
+    this.nades.dispose();
     this.renderer.dispose();
   }
 }

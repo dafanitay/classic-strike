@@ -600,6 +600,35 @@ export class GameSession {
         case 'defused':
           this.audio.radio('defused');
           break;
+        case 'nadeThrow': {
+          const thrower = sim.getPlayer(ev.player);
+          if (!thrower) break;
+          if (thrower === me) this.renderer.viewmodel.onFire();
+          this.audio.nadeThrow(thrower === me ? undefined : thrower.body.pos);
+          break;
+        }
+        case 'nadeBounce':
+          this.audio.nadeBounce(ev.pos);
+          break;
+        case 'nadeExplode': {
+          const d = Math.hypot(ev.pos.x - eye.x, ev.pos.y - eye.y, ev.pos.z - eye.z);
+          if (ev.nade === 'he') {
+            this.audio.heBlast(ev.pos, d);
+            for (let i = 0; i < 8; i++) {
+              const p = { x: ev.pos.x + (Math.random() - 0.5) * 2.5, y: ev.pos.y + 0.3 + Math.random() * 2, z: ev.pos.z + (Math.random() - 0.5) * 2.5 };
+              this.renderer.effects.puff(p, i < 3 ? 0xffb050 : 0x55504a, 0.8 + Math.random() * 0.6, 1.8 + Math.random() * 1.5);
+            }
+            this.renderer.effects.flash(this.tmpV.set(ev.pos.x, ev.pos.y + 0.4, ev.pos.z));
+          } else if (ev.nade === 'flash') {
+            this.audio.flashBang(ev.pos, d);
+            this.renderer.effects.flash(this.tmpV.set(ev.pos.x, ev.pos.y + 0.3, ev.pos.z));
+            // Ringing ears for as long as you're blinded (the sim decided how long).
+            if (me.alive && me.blindAt >= sim.time - 0.1) this.audio.earRing(me.blindEnd - sim.time);
+          } else {
+            this.audio.smokeHiss(ev.pos);
+          }
+          break;
+        }
         case 'exploded': {
           const d = Math.hypot(ev.pos.x - eye.x, ev.pos.y - eye.y, ev.pos.z - eye.z);
           this.audio.explosion(ev.pos, d);
@@ -781,6 +810,15 @@ export class GameSession {
     }
     r.bomb.update(bomb, sim.time, this.lastBeep, dt);
     r.effects.update(dt);
+    r.nades.update(sim, dt);
+    // Flashbang white-out (full, then fading) and the haze inside a smoke.
+    const viewer = me.alive ? me : null;
+    let blind = 0;
+    if (viewer) {
+      if (sim.time < viewer.blindFull) blind = 1;
+      else if (sim.time < viewer.blindEnd) blind = (viewer.blindEnd - sim.time) / Math.max(0.01, viewer.blindEnd - viewer.blindFull);
+    }
+    this.hud.setScreenEffects(Math.min(1, blind), viewer ? r.nades.insideSmoke(sim, sim.eyePos(viewer)) * 0.85 : 0);
     this.audio.setListener(cam.position, cam.rotation.y);
 
     // HUD.

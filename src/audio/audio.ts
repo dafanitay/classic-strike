@@ -262,7 +262,7 @@ export class GameAudio {
   }
 
   gunshot(cls: WeaponClass, id: WeaponId, pos?: Vec3, distance = 0): void {
-    if (!this.ctx || cls === 'melee') return;
+    if (!this.ctx || cls === 'melee' || cls === 'grenade') return;
     const t = this.ctx.currentTime;
     const bank = this.bank?.gun[id as GunSoundId];
     const dest = this.out(pos, 'gunshot', bank ? bank[0].duration : cls === 'sniper' || cls === 'shotgun' ? 0.9 : 0.4);
@@ -278,7 +278,7 @@ export class GameAudio {
       return;
     }
     const crack = 1 - far * 0.85;
-    const P: Record<Exclude<WeaponClass, 'melee'>, [number, number, number, number, number]> = {
+    const P: Record<Exclude<WeaponClass, 'melee' | 'grenade'>, [number, number, number, number, number]> = {
       // [crack freq, crack dur, boom freq, boom dur, gain]
       pistol: [2600, 0.11, 140, 0.12, 0.9],
       smg: [2200, 0.09, 120, 0.1, 0.75],
@@ -446,6 +446,67 @@ export class GameAudio {
     this.noiseBurst(dest, t, 1.8, 1.6, 'lowpass', 1200 * (0.4 + near), 0.6, 60);
     this.tone(dest, t, 1.2, 1.2, 'sine', 90, 28);
     this.noiseBurst(dest, t + 0.25, 2.5, 0.5, 'lowpass', 400, 0.5, 50); // rumble / echo
+  }
+
+  /** Pulling the pin and throwing (your own: centred; others: positional). */
+  nadeThrow(pos?: Vec3): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = this.out(pos, 'action', 0.4);
+    if (!dest) return;
+    this.noiseBurst(dest, t, 0.03, 0.25, 'bandpass', 3800, 4); // pin
+    this.noiseBurst(dest, t + 0.12, 0.22, 0.3, 'bandpass', 900, 0.8, 2400); // whoosh
+  }
+
+  /** A grenade clinking off a wall or the floor. */
+  nadeBounce(pos: Vec3): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = this.out(pos, 'impact', 0.2);
+    if (!dest) return;
+    this.tone(dest, t, 0.12, 0.3, 'triangle', 2100 + Math.random() * 600, 1500);
+    this.noiseBurst(dest, t, 0.04, 0.3, 'bandpass', 3000, 2);
+  }
+
+  /** HE: a sharp blast with debris, smaller than the bomb. */
+  heBlast(pos: Vec3, distance: number): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = this.out(pos, 'explosion', 1.6);
+    if (!dest) return;
+    const near = 1 - Math.min(1, distance / 60);
+    this.noiseBurst(dest, t, 0.9, 1.4, 'lowpass', 1800 * (0.4 + near), 0.6, 80);
+    this.noiseBurst(dest, t, 0.08, 1.0 * near, 'highpass', 2500, 0.7);
+    this.tone(dest, t, 0.6, 1.0, 'sine', 110, 35);
+    this.noiseBurst(dest, t + 0.2, 1.2, 0.3, 'lowpass', 500, 0.5, 60);
+  }
+
+  /** Flashbang: a hard, bright crack. */
+  flashBang(pos: Vec3, distance: number): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = this.out(pos, 'explosion', 0.8);
+    if (!dest) return;
+    const near = 1 - Math.min(1, distance / 50);
+    this.noiseBurst(dest, t, 0.25, 1.3, 'highpass', 1200, 0.5);
+    this.noiseBurst(dest, t, 0.5, 0.6 * near, 'lowpass', 900, 0.7, 120);
+  }
+
+  /** The hiss of a smoke grenade pouring out. */
+  smokeHiss(pos: Vec3): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = this.out(pos, 'action', 4.2);
+    if (!dest) return;
+    this.noiseBurst(dest, t, 4, 0.35, 'highpass', 3000, 0.5);
+    this.noiseBurst(dest, t, 2.5, 0.25, 'bandpass', 900, 0.6, 400);
+  }
+
+  /** The ringing in your ears after being flashed (non-positional). */
+  earRing(seconds: number): void {
+    if (!this.ctx || seconds <= 0.2) return;
+    const t = this.ctx.currentTime;
+    this.tone(this.sfx, t, seconds, 0.12, 'sine', 3400, 3300);
   }
 
   /** Radio-style announcement chirp. */

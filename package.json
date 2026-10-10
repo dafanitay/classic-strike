@@ -21,7 +21,8 @@
     "e2e:botai": "node tests/e2e/botai.mjs",
     "e2e:controls": "node tests/e2e/controls.mjs",
     "e2e:audio": "node tests/e2e/audio.mjs",
-    "e2e:sounds": "node tests/e2e/sounds.mjs"
+    "e2e:sounds": "node tests/e2e/sounds.mjs",
+    "e2e:grenades": "node tests/e2e/grenades.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

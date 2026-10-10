@@ -124,6 +124,7 @@ export class Input {
       case 'Digit1': case 'Numpad1': this.queueSlot(1); break;
       case 'Digit2': case 'Numpad2': this.queueSlot(2); break;
       case 'Digit3': case 'Numpad3': this.queueSlot(3); break;
+      case 'Digit4': case 'Numpad4': this.queueSlot(4); break; // grenades (again = next kind)
       case 'KeyR': this.pendingReload = true; break;
       case 'KeyG': this.pendingDrop = true; break;
       case 'KeyB': this.onAction('buy'); break;

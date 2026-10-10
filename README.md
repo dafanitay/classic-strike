@@ -37,7 +37,7 @@ Firefox), keyboard and mouse.
 ## Controls
 
 WASD move · mouse aim · LMB fire · RMB scope / heavy stab · Space jump ·
-Shift walk (silent) · C crouch · R reload · 1/2/3 weapons ·
+Shift walk (silent) · C crouch · R reload · 1/2/3 weapons · 4 grenades (again: next kind) ·
 B buy menu · E (hold) plant / defuse · G drop the bomb · Tab scoreboard · Esc pause (releases the mouse).
 
 Crouch is on **C**, not Ctrl, because Ctrl+W closes the browser tab.
@@ -206,6 +206,21 @@ No secrets are required; nothing secret is shipped to the browser.
     legs ×0.75. Armour and helmet absorb damage per weapon.
 - Buy menu (B): press a number to open a category, then a number to buy;
   0 goes back. Each team sees only what it can buy.
+- Grenades (equipment, key 4; press 4 again to switch kind). Left click
+  throws, right click lobs short. They bounce off walls and floors. You can
+  carry one HE ($300), two flashbangs ($200) and one smoke ($300), and you
+  lose them when you die.
+  - HE: explodes after 1.6 s. It does up to 98 damage within 9.5 m, less
+    further out, none through walls. Armour takes half.
+  - Flashbang: goes off after 1.6 s and whites out the screen of anyone
+    who sees it. It's worst for players looking straight at it up close
+    (about 2 s fully blind, then fading); with your back turned, nothing.
+    Your ears ring while you're blinded.
+  - Smoke: pops once it stops rolling. A cloud about 8 m across blocks
+    sight for 15 s, for players and bots alike. Bullets still go through.
+- Bots buy grenades from round 2. Attackers flash or smoke a site as they
+  go in, and turn away from a teammate's flash. Defenders throw an HE at
+  attackers they spot near a site.
 - Recoil is a **fixed spray pattern per weapon** (`recoilPattern` in
   `src/shared/weapons.ts`, expanded by `src/shared/recoil.ts`): the same
   spray lands in the same place every time, so it can be learned and pulled
