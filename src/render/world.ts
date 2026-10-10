@@ -130,16 +130,21 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   // Roof rows only on walls a roof touches (within 0.1 m horizontally).
   const touches = (b: BuiltBox, r: BuiltBox) =>
     b.min.x <= r.max.x + 0.1 && b.max.x >= r.min.x - 0.1 && b.min.z <= r.max.z + 0.1 && b.max.z >= r.min.z - 0.1;
+  const sunk = (b: BuiltBox) => ({ min: { x: b.min.x, y: b.min.y - 0.15, z: b.min.z }, max: b.max });
   const rowsFor = (b: BuiltBox) => [
     ...floorYs.filter((y) => y >= b.min.y - 0.01).map((y) => y + 0.9),
     ...roofs.filter((r) => touches(b, r)).flatMap((r) => [r.min.y - 0.08, r.min.y + 0.03]),
   ];
   for (const b of map.boxes as BuiltBox[]) {
-    if (b.kind === 'wall') wallGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz', 'py'], 2 * fine, rowsFor(b)));
-    else if (b.kind === 'crate') crateGeos.push(boxGeometry(b, surface('crate').worldSize, undefined, 0.5 * fine, [b.min.y + 0.5]));
+    // Anything standing on a floor is drawn 15 cm deeper than it really is
+    // (collision is unchanged), so the hairline crack where a floor quad
+    // meets it shows the wall instead of the sky. A vertex row stays at the
+    // real base for the baked contact shadow.
+    if (b.kind === 'wall') wallGeos.push(boxGeometry(sunk(b), wallTex, ['px', 'nx', 'pz', 'nz', 'py'], 2 * fine, [b.min.y, ...rowsFor(b)]));
+    else if (b.kind === 'crate') crateGeos.push(boxGeometry(sunk(b), surface('crate').worldSize, undefined, 0.5 * fine, [b.min.y, b.min.y + 0.5]));
     else if (b.kind === 'roof') roofGeos.push(boxGeometry(b, surface('roof').worldSize, undefined, 2 * fine));
     // Raised floors: only the sides (the top is the painted floor above).
-    else if (b.kind === 'platform') platformGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz'], 2 * fine));
+    else if (b.kind === 'platform') platformGeos.push(boxGeometry(sunk(b), wallTex, ['px', 'nx', 'pz', 'nz'], 2 * fine, [b.min.y]));
     else if (b.kind === 'step') stepGeos.push(boxGeometry(b, surface('concrete').worldSize, ['px', 'nx', 'pz', 'nz', 'py']));
   }
   addMerged(wallGeos, mat('wall'), true, true);
