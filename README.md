@@ -135,8 +135,13 @@ No secrets are required; nothing secret is shipped to the browser.
 - Weapons: knife, P9 pistol, MK-5 SMG, Pump-12 shotgun, AR-7 rifle (Attackers),
   K4 carbine (Defenders), Longbow sniper (2-level scope). Damage falls off with
   range; head ×4, stomach ×1.25, legs ×0.75; armour/helmet absorb per weapon.
-- Accuracy suffers when moving or airborne and improves crouched; sustained
-  fire climbs, then sways.
+- Recoil is a **fixed spray pattern per weapon** (`recoilPattern` in
+  `src/shared/weapons.ts`, expanded by `src/shared/recoil.ts`): the same
+  spray lands in the same place every time, so it can be learned and pulled
+  down. Recoil recovers within a fraction of a second once you stop firing,
+  so taps and short bursts are accurate. Spread is small when standing and
+  large when moving or airborne; crouching tightens it.
+- Each weapon has its own draw time (`drawTime`) before it can fire.
 
 ## Status
 
