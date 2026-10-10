@@ -66,8 +66,24 @@ export class NavGrid {
     return null;
   }
 
-  /** A* from world position to world position. Returns waypoints (excluding start). */
-  findPath(from: Vec3, to: Vec3): Vec3[] | null {
+  /**
+   * A* from world position to world position. Returns waypoints (excluding
+   * start). `cellCost`, if given, adds a per-cell cost (used to find
+   * alternative routes and to avoid known danger).
+   */
+  findPath(from: Vec3, to: Vec3, cellCost?: Float32Array): Vec3[] | null {
+    const t = this.nearestWalkable(to);
+    const cells = this.findCells(from, to, cellCost);
+    if (!cells || !t) return null;
+    const cols = this.cols;
+    const pts = cells.map((i) => this.map.cellCenter(i % cols, Math.floor(i / cols)));
+    pts[pts.length - 1] = { x: to.x, y: this.map.surfaceY(to), z: to.z };
+    if (!this.walkableLine(pts[pts.length - 1], pts[Math.max(0, pts.length - 2)])) pts[pts.length - 1] = this.map.cellCenter(t.x, t.z);
+    return this.smooth({ x: from.x, y: this.map.surfaceY(from), z: from.z }, pts);
+  }
+
+  /** A* returning the visited cell indices (row-major), start and goal included. */
+  findCells(from: { x: number; z: number }, to: { x: number; z: number }, cellCost?: Float32Array): number[] | null {
     const s = this.nearestWalkable(from);
     const t = this.nearestWalkable(to);
     if (!s || !t) return null;
@@ -111,7 +127,7 @@ export class NavGrid {
           } else if (!this.canStep(cx, cz, nx, nz, false)) continue;
           const ni = nz * cols + nx;
           if (this.state[ni] === 2) continue;
-          const ng = this.g[cur] + (dx && dz ? 1.4142 : 1);
+          const ng = this.g[cur] + (dx && dz ? 1.4142 : 1) + (cellCost ? cellCost[ni] : 0);
           if (this.state[ni] === 1 && ng >= this.g[ni]) continue;
           this.g[ni] = ng;
           this.f[ni] = ng + h(ni);
@@ -125,10 +141,40 @@ export class NavGrid {
     const cells: number[] = [];
     for (let i = goal; i !== -1; i = this.parent[i]) cells.push(i);
     cells.reverse();
-    const pts = cells.map((i) => this.map.cellCenter(i % cols, Math.floor(i / cols)));
-    pts[pts.length - 1] = { x: to.x, y: this.map.surfaceY(to), z: to.z };
-    if (!this.walkableLine(pts[pts.length - 1], pts[Math.max(0, pts.length - 2)])) pts[pts.length - 1] = this.map.cellCenter(t.x, t.z);
-    return this.smooth({ x: from.x, y: this.map.surfaceY(from), z: from.z }, pts);
+    return cells;
+  }
+
+  /** Walking distance (m) from a world position to every cell (Infinity where unreachable). */
+  distanceField(from: { x: number; z: number }): Float32Array {
+    const cols = this.cols;
+    const out = new Float32Array(cols * this.rows).fill(Infinity);
+    const s = this.nearestWalkable(from);
+    if (!s) return out;
+    const cs = this.map.def.cellSize;
+    const start = s.z * cols + s.x;
+    out[start] = 0;
+    this.heap.length = 0;
+    this.f.fill(Infinity);
+    this.f[start] = 0;
+    this.push(start);
+    while (this.heap.length) {
+      const cur = this.pop();
+      const cx = cur % cols;
+      const cz = Math.floor(cur / cols);
+      const d0 = out[cur];
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const nx = cx + dx;
+        const nz = cz + dz;
+        if (!this.map.walkable(nx, nz) || !this.canStep(cx, cz, nx, nz, false)) continue;
+        const ni = nz * cols + nx;
+        const nd = d0 + cs;
+        if (nd >= out[ni]) continue;
+        out[ni] = nd;
+        this.f[ni] = nd;
+        this.push(ni);
+      }
+    }
+    return out;
   }
 
   /**
@@ -147,6 +193,11 @@ export class NavGrid {
     const rise = hb - ha;
     if (bothWays) return Math.abs(rise) <= NAV_CLIMB;
     return rise <= NAV_CLIMB && rise >= -NAV_DROP;
+  }
+
+  /** String-pulls a list of points (e.g. cell centres) into straight walkable legs. */
+  smoothPoints(start: Vec3, pts: Vec3[]): Vec3[] {
+    return this.smooth({ x: start.x, y: this.map.surfaceY(start), z: start.z }, pts);
   }
 
   /** Greedy string pulling. */
