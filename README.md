@@ -188,9 +188,24 @@ No secrets are required; nothing secret is shipped to the browser.
   buy time 20 s in your spawn zone. Defenders win when time runs out.
 - Economy: start $800; win $3250; loss $1400 + $500 per consecutive loss (max
   +$2000); kill rewards per weapon class; cap $16000. Survivors keep their kit.
-- Weapons: knife, P9 pistol, MK-5 SMG, Pump-12 shotgun, AR-7 rifle (Attackers),
-  K4 carbine (Defenders), Longbow sniper (2-level scope). Damage falls off with
-  range; head ×4, stomach ×1.25, legs ×0.75; armour/helmet absorb per weapon.
+- Weapons: 22 guns plus the knife, one for every classic role. Names and
+  numbers are original. (A) = Attackers only, (D) = Defenders only.
+
+  | Category (buy key) | Guns |
+  |---|---|
+  | 1 Pistols | P9 Compact (default) · M45 Tactical · K-57 Duty (D) · HC-50 Hand Cannon |
+  | 2 Shotguns | Pump-12 · Auto-12 (semi-auto) |
+  | 3 SMGs | TP-9 (D) · R-10 Rattler (A) · MK-5 · U-45 · P-50 Hornet (50 rounds) |
+  | 4 Rifles | GR-3 Galeo (A) · FM-2 Falcon (D) · AR-7 (A) · K4 (D) · SG-5 scoped (A) · AU-3 scoped (D) · Kestrel light sniper · Longbow .338 · RP-3 semi-auto sniper (A) · VG-5 semi-auto sniper (D) |
+  | 5 Machine gun | MG-9 Bulldog (100 rounds) |
+  | 6 Equipment | Kevlar · Kevlar + helmet · primary / secondary ammo · defuse kit (D) |
+
+  - Bolt-action snipers drop out of the scope after each shot. Scoped
+    rifles and semi-automatic snipers stay zoomed.
+  - Damage falls off with range. Hit multipliers: head ×4, stomach ×1.25,
+    legs ×0.75. Armour and helmet absorb damage per weapon.
+- Buy menu (B): press a number to open a category, then a number to buy;
+  0 goes back. Each team sees only what it can buy.
 - Recoil is a **fixed spray pattern per weapon** (`recoilPattern` in
   `src/shared/weapons.ts`, expanded by `src/shared/recoil.ts`): the same
   spray lands in the same place every time, so it can be learned and pulled

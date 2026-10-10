@@ -101,7 +101,7 @@ const r = await page.evaluate(async (wantWav) => {
   return out;
 }, !!wavDir);
 
-check('the bank renders (6 guns, 5 impact kinds, 3 variants each)', Object.keys(r.gun).length === 6 && Object.keys(r.impact).length === 5 && [...Object.values(r.gun), ...Object.values(r.impact)].every((s) => s.n === 3 && s.peak > 0.5), `${r.ms.toFixed(0)} ms`);
+check(`the bank renders (${Object.keys(r.gun).length} guns, 5 impact kinds, 3 variants each)`, Object.keys(r.gun).length >= 22 && Object.keys(r.impact).length === 5 && [...Object.values(r.gun), ...Object.values(r.impact)].every((s) => s.n === 3 && s.peak > 0.5), `${r.ms.toFixed(0)} ms`);
 check('every gunshot hits its peak within the first 15 ms (a sharp report, not a swell)', Object.values(r.gun).every((s) => s.peakMs < 15), Object.entries(r.gun).map(([k, s]) => `${k} ${s.peakMs.toFixed(1)} ms`).join(', '));
 check('heavier guns carry more low end: sniper and shotgun > rifle > pistol', r.gun.longbow.low > r.gun.ar7.low && r.gun.pump12.low > r.gun.ar7.low && r.gun.ar7.low > r.gun.p9.low, Object.entries(r.gun).map(([k, s]) => `${k} ${s.low.toFixed(3)}`).join(', '));
 check('heavier guns ring out longer', r.gun.longbow.dur > r.gun.ar7.dur && r.gun.ar7.dur > r.gun.mk5.dur);

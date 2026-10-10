@@ -38,7 +38,7 @@ interface GunRecipe {
 }
 
 /** Per weapon: heavier guns get more body and thump and a longer tail. */
-export const GUN_RECIPES: Record<GunSoundId, GunRecipe> = {
+export const GUN_RECIPES = {
   p9: {
     crack: { hp: 2400, dur: 0.035, gain: 0.9 },
     body: { freq: 1100, q: 0.9, dur: 0.09, gain: 0.9, drive: 3 },
@@ -87,7 +87,43 @@ export const GUN_RECIPES: Record<GunSoundId, GunRecipe> = {
     tail: { dur: 1.6, gain: 0.28, lp: 2400 },
     length: 1.9,
   },
-};
+} as Record<GunSoundId, GunRecipe>;
+
+/**
+ * A new gun's sound from a reference gun of its kind: `pitch` scales every
+ * frequency (smaller calibre / shorter barrel = higher), `weight` scales the
+ * low thump and body, `tail` the echo length.
+ */
+function variant(base: GunRecipe, pitch: number, weight: number, tail: number, mechAt?: number): GunRecipe {
+  return {
+    crack: { ...base.crack, hp: base.crack.hp * pitch },
+    body: { ...base.body, freq: base.body.freq * pitch, gain: Math.min(1.1, base.body.gain * weight), drive: base.body.drive * Math.sqrt(weight) },
+    thump: { ...base.thump, f0: base.thump.f0 * pitch, f1: base.thump.f1 * pitch, gain: Math.min(1.2, base.thump.gain * weight), dur: base.thump.dur * Math.sqrt(weight) },
+    mech: { ...base.mech, freq: base.mech.freq * pitch, at: mechAt ?? base.mech.at },
+    tail: { ...base.tail, dur: base.tail.dur * tail },
+    length: base.length * Math.max(1, tail),
+  };
+}
+
+const R = GUN_RECIPES as Partial<Record<GunSoundId, GunRecipe>>;
+Object.assign(GUN_RECIPES, {
+  m45: variant(R.p9!, 0.85, 1.15, 1.05),
+  k57: variant(R.p9!, 1.12, 0.9, 1),
+  hc50: variant(R.p9!, 0.7, 1.6, 1.4),
+  tp9: variant(R.mk5!, 1.15, 0.8, 0.9),
+  r10: variant(R.mk5!, 0.9, 1.05, 0.95),
+  u45: variant(R.mk5!, 0.85, 1.15, 1),
+  p50: variant(R.mk5!, 1.1, 0.9, 1),
+  auto12: variant(R.pump12!, 1.05, 0.9, 0.9, 0.12),
+  gr3: variant(R.ar7!, 1.08, 0.92, 0.95),
+  fm2: variant(R.k4!, 1.06, 0.9, 0.95),
+  sg5: variant(R.ar7!, 1.02, 0.97, 1.05),
+  au3: variant(R.k4!, 0.98, 1, 1.05),
+  kestrel: variant(R.longbow!, 1.2, 0.75, 0.8, 0.45),
+  rp3: variant(R.longbow!, 1.1, 0.85, 0.9, 0.12),
+  vg5: variant(R.longbow!, 1.12, 0.8, 0.9, 0.12),
+  mg9: variant(R.ar7!, 0.92, 1.12, 1.15),
+});
 
 const VARIANTS = 3;
 

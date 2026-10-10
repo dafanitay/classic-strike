@@ -156,6 +156,9 @@ input[type='text'] { background: #1a1b15; color: var(--text); border: 1px solid 
 .buy-item.poor .p { color: var(--red); }
 .buy-item.na { opacity: 0.35; cursor: not-allowed; }
 .buy-item .cat { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.buy-item.hidden { display: none; }
+.buy-cat { font-size: 15px; padding: 12px 12px; }
+.buy-cat .p, .buy-back .k { color: var(--amber); }
 .buy-msg { min-height: 18px; color: #e9a35b; margin-top: 8px; font-size: 12px; }
 
 .clickplay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: pointer; background: rgba(0, 0, 0, 0.45); }

@@ -151,7 +151,7 @@ export interface BotDebug {
 }
 
 const ROLES_A: Role[] = ['entry', 'flank', 'support', 'lurk', 'support', 'flank', 'support', 'lurk'];
-const PREFERRED_RANGE: Record<string, number> = { melee: 1, pistol: 12, smg: 10, shotgun: 6, rifle: 16, sniper: 30 };
+const PREFERRED_RANGE: Record<string, number> = { melee: 1, pistol: 12, smg: 10, shotgun: 6, rifle: 16, sniper: 30, mg: 14 };
 
 export class BotDirector {
   private readonly sim: Simulation;
@@ -1180,25 +1180,56 @@ export class BotDirector {
 
   // -------------------------------------------------------------- economy
 
+  /**
+   * Buys like a player would: a full buy when the money allows (mostly the
+   * team's main rifle, sometimes a scoped rifle, a sniper or the machine
+   * gun), an SMG / shotgun / cheap rifle when it doesn't, a better pistol on
+   * a pistol round, armour whenever it can.
+   */
   private buy(p: SimPlayer, b: Brain): void {
     if (b.boughtRound === this.sim.round || !this.sim.canBuy(p)) return;
     b.boughtRound = this.sim.round;
+    const sim = this.sim;
+    const r = sim.random();
+    const mine = (id: WeaponId) => !WEAPONS[id].team || WEAPONS[id].team === p.team;
+    const pick = (ids: WeaponId[]): WeaponId | null => {
+      const ok = ids.filter(mine);
+      return ok.length ? ok[Math.floor(sim.random() * ok.length)] : null;
+    };
     const rifle: WeaponId = p.team === 'A' ? 'ar7' : 'k4';
-    const r = this.sim.random();
     const has = p.weapons[1]?.id;
+    const money = p.money;
     const order: string[] = [];
     if (!has) {
-      if (this.difficulty === 'hard' && p.money >= 4750 + 1000 && r < 0.2) order.push('helmet', 'longbow');
-      else if (p.money >= WEAPONS[rifle].price + 1000) order.push('helmet', rifle);
-      else if (p.money >= WEAPONS[rifle].price + 650) order.push('kevlar', rifle);
-      else if (p.money >= 2200 && this.sim.round > 1) order.push('kevlar', r < 0.65 ? 'mk5' : 'pump12');
-      else if (p.money >= 650 && this.sim.round > 1) order.push('kevlar');
-    } else if (p.armor < 50 && p.money >= 650) {
-      order.push(p.money >= 1000 ? 'helmet' : 'kevlar');
+      let gun: WeaponId | null = null;
+      if (money >= WEAPONS[rifle].price + 650) {
+        // Full buy.
+        if (this.difficulty !== 'easy' && money >= 4750 + 1000 && r < 0.12) gun = 'longbow';
+        else if (money >= 5750 + 1000 && r < 0.15) gun = 'mg9';
+        else if (money >= 5000 + 1000 && r < 0.18) gun = pick(['rp3', 'vg5']);
+        else if (money >= 3500 + 1000 && r < 0.3) gun = pick(['sg5', 'au3']);
+        else if (r < 0.38) gun = 'kestrel';
+        else gun = rifle;
+      } else if (money >= 2000 + 650 && sim.round > 1) {
+        gun = r < 0.5 ? pick(['gr3', 'fm2']) : r < 0.75 ? pick(['p50', 'u45', 'mk5']) : pick(['pump12', 'auto12'].filter((id) => WEAPONS[id as WeaponId].price + 650 <= money) as WeaponId[]);
+      } else if (money >= 1250 + 650 && sim.round > 1) {
+        gun = r < 0.7 ? pick(['tp9', 'r10', 'mk5']) : 'pump12';
+      }
+      if (gun) {
+        order.push(money - WEAPONS[gun].price >= 1000 ? 'helmet' : 'kevlar', gun);
+      } else if (money >= 650 + 650 && sim.round > 1) {
+        order.push('kevlar', pick(['hc50', 'k57', 'm45'])!);
+      } else if (money >= 650 && r < 0.6) {
+        order.push(pick(['hc50', 'k57', 'm45'])!);
+      } else if (money >= 650 && sim.round > 1) {
+        order.push('kevlar');
+      }
+    } else if (p.armor < 50 && money >= 650) {
+      order.push(money >= 1000 ? 'helmet' : 'kevlar');
     }
     // Defenders who can spare it carry a kit (it halves the defuse time).
     if (p.team === 'D' && !p.kit && this.difficulty !== 'easy') order.push('defuser');
-    for (const item of order) this.sim.buy(p, item as Parameters<Simulation['buy']>[1]);
+    for (const item of order) sim.buy(p, item as Parameters<Simulation['buy']>[1]);
   }
 
   /** Default team name list for bots. */

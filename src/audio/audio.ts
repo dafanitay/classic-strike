@@ -285,6 +285,7 @@ export class GameAudio {
       rifle: [1800, 0.16, 95, 0.18, 1.0],
       shotgun: [1200, 0.25, 70, 0.3, 1.2],
       sniper: [1400, 0.4, 55, 0.5, 1.4],
+      mg: [1700, 0.15, 85, 0.17, 1.05],
     };
     const [cf, cd, bf, bd, gain] = P[cls];
     const v = id === 'k4' ? 0.85 : 1;
