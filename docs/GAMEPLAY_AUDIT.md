@@ -101,9 +101,12 @@ Architecture (`src/shared/tactics.ts`, `src/shared/bot.ts`):
 - **Tactical map, derived from the geometry** (nothing hand-placed; 55 ms
   once per map):
   - Alternative routes from each spawn to each site: A* is re-run while
-    penalising corridors already used, and near-duplicates are dropped. On
-    Depot this gives Short A (Catwalk), Mid Doors and Long A to A; Lower
-    Tunnel, Outside Tunnels and Mid Doors to B.
+    penalising corridors already used, and near-duplicates are dropped.
+    Cells near the enemy spawn cost extra, and a route through the enemy
+    buy zone is discarded (an attack "via Mid Doors" walked through the
+    Defender Spawn). On Depot this gives Short A via Catwalk (64 m) and
+    Long A (78 m) to A; Lower Tunnel (56 m) and Outside Tunnels (58 m, plus
+    a 62 m variant on the other side of the 3-cell-wide tunnel) to B.
   - Scored positions: site holds facing the Attackers' entries, mid control,
     lurk spots, post-plant spots. Scores combine cover from neighbouring
     walls and crates with line of sight to what should be watched.
@@ -122,9 +125,11 @@ Architecture (`src/shared/tactics.ts`, `src/shared/bot.ts`):
   stops bots walking through each other.
 - **Information.** Each bot has its own memory: what it saw, what it heard,
   what it was told. A sighting gets one responder and a teammate's death
-  gets two, chosen by distance and role; the rest only turn to look.
-  Defenders rotate when a site is hit: the mid player first, then an anchor
-  from the other site once contacts repeat (at most every 8 s per site).
+  gets two, chosen by distance and role; the rest only turn to look. The
+  same enemy seen again within 4 s (by another teammate, or re-acquired)
+  sends nobody further. Defenders rotate when a site is hit: the mid player
+  first, then an anchor from the other site once two *different* enemies
+  are seen there within 6 s (at most every 8 s per site).
 - **Combat.**
   - Closing distance follows the nav grid, which fixes D3.
   - Strafing probes for walls before moving.
@@ -144,37 +149,85 @@ Architecture (`src/shared/tactics.ts`, `src/shared/bot.ts`):
   data for tests.
 
 Results (`docs/measurements/bots-after.txt`, same harness and window, 8
-seeds each):
+seeds each, after the review fixes and the map fix below):
 
 | Attackers, 5–25 s into a round | easy before → after | normal | hard |
 |---|---|---|---|
-| teammate within 3 m | 84% → 29% | 40% → 10% | 54% → 10% |
-| nearest teammate | 1.8 → 8.4 m | 5.9 → 12.3 m | 5.1 → 12.7 m |
-| map areas occupied | 1.39 → 2.28 | 1.98 → 2.75 | 2.09 → 3.12 |
-| biggest group | 3.7 → 1.9 | 2.4 → 1.4 | 2.6 → 1.5 |
-| lanes used per round | 1.51 → 2.05 | 1.59 → 2.05 | 1.41 → 2.16 |
-| stuck, bot-seconds per match | 153 → 10 | 46 → 13 | 6.7 → 9.6 |
+| teammate within 3 m | 84% → 15% | 40% → 8% | 54% → 11% |
+| nearest teammate | 1.8 → 13.6 m | 5.9 → 14.1 m | 5.1 → 14.6 m |
+| map areas occupied | 1.39 → 2.90 | 1.98 → 3.03 | 2.09 → 3.04 |
+| biggest group | 3.7 → 1.5 | 2.4 → 1.3 | 2.6 → 1.4 |
+| lanes used per round | 1.51 → 2.74 | 1.59 → 2.71 | 1.41 → 2.76 |
+| stuck, bot-seconds per match | 153 → 9.8 | 46 → 10.7 | 6.7 → 7.9 |
 
-- **Defenders:** within 3 m 46% → 12% (easy) and 31% → 11% (normal).
-- **Round length:** 18 s → 34 s at normal; Attackers now stage before
+- **Defenders:** within 3 m 46% → 10% (easy), 31% → 6% (normal), 21% → 6%
+  (hard).
+- **Round length:** 18 s → 31 s at normal; Attackers now stage before
   pushing.
-- **Round outcomes:** Defenders win 30/58 rounds (easy), 31/58 (normal) and
-  7/47 (hard), against 22/58, 27/60 and 7/47 before. The first version
-  without rotations dropped Defender wins to 15/52 at normal, which is why
-  rotations were added.
-- **Cost:** about 30 µs of AI per tick for 10 bots (headless Node).
+- **Bomb plants** (6 matches each, `roundsToWin` 8): easy 40 → 23, normal
+  7 → 26, hard 2 → 20. Easy is the one regression: the old easy bots walked
+  the shortest route as one group, and the easy Defenders lost that fight.
+  The bomb carrier now stages with its team like everyone else.
+- **Round outcomes** (8 matches each, first to 8): Defenders win 32/89
+  (easy), 34/91 (normal) and 19/83 (hard). Measured with the old AI on a
+  shorter harness: 22/58, 27/60 and 7/47.
+- **Cost:** about 30–60 µs of AI per tick for 10–16 bots (headless Node).
+  Spot lists are built once in the `BotDirector` constructor, so the first
+  round no longer pays a 17–22 ms build.
+
+### Review fixes (independent review of the M3 diff)
+
+- The diagnostics overlay rebuilt its line geometry only when first shown,
+  so paths with more points than the first one were cut short. It now
+  recreates the geometry when the point count changes, and updates at most
+  every 100 ms.
+- Retreat to cover had no cooldown and could flip-flop every decision. It
+  now waits 4–7 s (by caution) before retreating again.
+- A bot guarding the planted bomb could be pulled away to support a
+  sighting. Guards are no longer eligible.
+- When only lurkers were left alive, the push condition never fired. It now
+  pushes when nobody else is still staging.
+- A bomb carrier stuck three times while staging now pushes the site
+  instead of picking another staging point.
+- Staging points of teammates on the same route are now at least 3.5 m
+  apart (test A failed at 2 m on one seed).
+
+### D4 (P1, fixed): spawn-to-spawn sightline through Middle
+
+Found while explaining why, on hard, Attackers died *inside their own spawn*
+0.1–3 s into the round. The Middle pillar blocks only the z = 14 row of the
+two-cell-wide Mid Doors, so the z = 15 row was a straight 60 m line from
+Attacker Spawn to Defender Spawn: 176 pairs of spawn-zone cells could see
+each other at eye level. Hard bots, with fast reactions, killed through it at
+round start. This was not new; it predates M3.
+
+Fix: the pillar is now two cells (`{x: 21, z: 15}` added in
+`src/shared/maps/depot.ts`); Middle stays passable north and south of it.
+New test in `elevation.test.ts` checks every pair of spawn-zone cells and
+fails on the old map. After the fix, the hard carriers' deaths in Attacker
+Spawn went from 13 to 0, and hard Defender round wins from 4/68 to 19/83 (the
+cheap spawn kills had gone both ways).
 
 Tests:
-- `src/shared/botAI.test.ts`, 12 tests covering A–G. Run against the old AI,
+- `src/shared/botAI.test.ts`, 12 tests covering A–G (test E caught the
+  "one enemy counted as two contacts" bug). Run against the old AI,
   8 fail: B, C, F, F2, G 8v8 and E fail on behaviour; A and D can't run
   because the old AI had no `debugState()`.
 - `tests/e2e/botai.mjs`, 5 checks: the overlay is shown only on request,
   and bots spread out in a real browser match.
 
 Remaining:
-- Hard is still Attacker-sided (7/47), as it was before this work.
-- Stuck time at hard is slightly higher (6.7 → 9.6 bot-seconds per match,
-  about one second per round across 10 bots).
+- Every difficulty is Attacker-sided: Defenders win 36% (easy), 37%
+  (normal) and 23% (hard) of rounds. Hard was already the worst before this
+  work. Tuning it needs a decision on whether Defenders should get an edge
+  through AI or through the map. It isn't tuned here.
+- Bomb plants on easy dropped from 40 to 23 per 6 matches (see above).
+- The bomb-objective test in `bot.test.ts` now runs 3 seeded matches instead
+  of 1 with the same requirements (2 plants, 1 defuse, 1 pickup). A defuse is
+  rare by nature (5 in 89 easy rounds), and seed 1 alone had none after the
+  map fix.
+- Stuck time at hard is slightly higher (6.7 → 7.9 bot-seconds per match,
+  well under one second per round across 10 bots).
 - With no player collision, crossing paths still overlap visually for a
   moment.
 - Nobody has played against these bots yet. Whether they *feel* human is a

@@ -109,6 +109,8 @@ interface Brain {
   boughtRound: number;
   combatPathAt: number;
   advanceBlockedUntil: number;
+  /** No new retreat before this time (stops retreat <-> objective ping-pong). */
+  retreatReadyAt: number;
   // progress monitoring
   progAt: number;
   progPos: Vec3;
@@ -125,9 +127,11 @@ interface TeamPlan {
   /** When the Attackers stop waiting outside the site and go in. */
   pushAt: number;
   lastSite: BombSite | null;
-  /** Defenders: recent contacts per site, and when each site was last reinforced. */
-  contacts: Record<BombSite, number[]>;
+  /** Defenders: recent contacts per site (which enemy, when), and when each site was last reinforced. */
+  contacts: Record<BombSite, { time: number; enemy: number }[]>;
   rotatedAt: Record<BombSite, number>;
+  /** When help was last sent for a sighting of each enemy (by player id). */
+  sightings: Map<number, number>;
 }
 
 /** What the diagnostics overlay shows for one bot. */
@@ -156,8 +160,8 @@ export class BotDirector {
   difficulty: Difficulty;
   private readonly brains = new Map<number, Brain>();
   private readonly plans: Record<Team, TeamPlan> = {
-    A: { site: 'A', pushAt: Infinity, lastSite: null, contacts: { A: [], B: [] }, rotatedAt: { A: -99, B: -99 } },
-    D: { site: 'A', pushAt: Infinity, lastSite: null, contacts: { A: [], B: [] }, rotatedAt: { A: -99, B: -99 } },
+    A: { site: 'A', pushAt: Infinity, lastSite: null, contacts: { A: [], B: [] }, rotatedAt: { A: -99, B: -99 }, sightings: new Map() },
+    D: { site: 'A', pushAt: Infinity, lastSite: null, contacts: { A: [], B: [] }, rotatedAt: { A: -99, B: -99 }, sightings: new Map() },
   };
   private planRound = -1;
   private coordinateAt = 0;
@@ -168,6 +172,12 @@ export class BotDirector {
     this.difficulty = difficulty;
     this.tactics = tacticalMap(sim.map);
     this.nav = this.tactics.nav;
+    // Build the position lists now (at map load), not on first use mid-round.
+    for (const s of ['A', 'B'] as const) {
+      this.tactics.holdSpots(s);
+      this.tactics.lurkSpots(s);
+    }
+    this.tactics.midSpots();
   }
 
   // ---------------------------------------------------------------- brains
@@ -194,7 +204,7 @@ export class BotDirector {
         targetId: null, targetSince: 0, reactionAt: 0, visible: 0, memory: null, engagedUntil: 0,
         aimYaw: p.yaw, aimPitch: 0, errYaw: 0, errPitch: 0, errAt: 0,
         strafeDir: 1, strafeUntil: 0, burstLeft: 0, burstPauseUntil: 0, semiToggle: false, wantScope: false,
-        nextPerceive: 0, boughtRound: -1, combatPathAt: 0, advanceBlockedUntil: 0,
+        nextPerceive: 0, boughtRound: -1, combatPathAt: 0, advanceBlockedUntil: 0, retreatReadyAt: 0,
         progAt: 0, progPos: { ...p.body.pos }, stuckCount: 0, stuckTime: 0, sideUntil: 0, sideDir: null, jumpUntil: 0, crowdedSince: -1,
       };
       this.brains.set(p.id, b);
@@ -230,7 +240,7 @@ export class BotDirector {
         // A death is radioed: the victim's team learns roughly where it happened.
         const victim = sim.getPlayer(ev.victim);
         const killer = sim.getPlayer(ev.killer);
-        if (victim && killer && killer.team !== victim.team) this.report(victim.team, victim.body.pos, 'death', victim.id);
+        if (victim && killer && killer.team !== victim.team) this.report(victim.team, victim.body.pos, 'death', victim.id, killer.id);
         continue;
       }
       if (ev.type === 'planted') {
@@ -298,6 +308,8 @@ export class BotDirector {
     planA.pushAt = Infinity;
     this.plans.D.contacts = { A: [], B: [] };
     this.plans.D.rotatedAt = { A: -99, B: -99 };
+    this.plans.A.sightings.clear();
+    this.plans.D.sightings.clear();
     for (const p of sim.players) {
       if (!p.isBot) continue;
       const b = this.brain(p);
@@ -362,7 +374,11 @@ export class BotDirector {
       b.route = route;
       // Stage short of the site; teammates on the same route stage further back.
       const sameRoute = assigned.filter((a) => this.brain(a.p).route === route && a.p !== p).length;
-      const stage = this.stagePoint(route, role === 'support' ? 3 + sameRoute * 2 : sameRoute * 2);
+      let back = role === 'support' ? 3 + sameRoute * 2 : sameRoute * 2;
+      let stage = this.stagePoint(route, back);
+      // Routes can end close together: don't stage on top of a teammate.
+      const taken = assigned.filter((a) => a.p !== p).map((a) => this.brain(a.p).dest).filter((d): d is Vec3 => !!d);
+      for (let k = 0; k < 5 && taken.some((d) => dist2D(d, stage) < 3.5); k++) stage = this.stagePoint(route, (back += 2));
       b.startAt = sim.roundStartTime + (role === 'entry' ? 0 : role === 'flank' ? 0.2 + sim.random() * 0.4 : 0.9 + sim.random() * 0.9) + (1 - b.pers.aggression) * 0.4;
       b.nextDecision = Math.max(b.nextDecision, now);
       this.setDest(p, b, stage, 'move', `${role}: stage at ${route.areas[route.areas.length - 2] ?? site}`, null, route);
@@ -467,7 +483,8 @@ export class BotDirector {
       const fighting = goers.some((p) => this.brain(p).targetId !== null && dist2D(p.body.pos, this.tactics.site[planA.site]) < 25);
       const elapsed = now - sim.roundStartTime;
       const timeLeft = sim.timeLeft();
-      if (goers.length && (staged >= Math.ceil(goers.length / 2) || fighting || elapsed > 30 || timeLeft < 45)) planA.pushAt = now;
+      // (Only lurkers left: they go in themselves.)
+      if (bots.length && (!goers.length || staged >= Math.ceil(goers.length / 2) || fighting || elapsed > 30 || timeLeft < 45)) planA.pushAt = now;
     }
     // Crowding: two bots on top of each other for a while, neither fighting
     // nor doing a job that needs it -> the lower-priority one moves.
@@ -521,8 +538,10 @@ export class BotDirector {
   /**
    * A sighting or a teammate's death: one or two bots answer (the best
    * placed, whose role suits it); everyone else nearby only turns to look.
+   * The same enemy seen again (by another teammate, or re-acquired after
+   * losing sight) within 4 s sends no further help.
    */
-  private report(team: Team, pos: Vec3, kind: 'seen' | 'death', by: number): void {
+  private report(team: Team, pos: Vec3, kind: 'seen' | 'death', by: number, enemy: number): void {
     const sim = this.sim;
     if (sim.phase !== 'live') return;
     const bots = this.alive(team).filter((p) => p.id !== by);
@@ -531,7 +550,7 @@ export class BotDirector {
         const b = this.brain(p);
         const d = dist2D(p.body.pos, pos);
         let s = d;
-        if (b.targetId !== null || p.action || b.state === 'fetch' || b.state === 'retake') s = Infinity;
+        if (b.targetId !== null || p.action || b.state === 'fetch' || b.state === 'retake' || b.state === 'guard') s = Infinity;
         if (b.state === 'support' && b.dest && dist2D(b.dest, pos) < 12) s = Infinity; // already on it
         if (b.role === 'support' || b.role === 'mid') s -= 8;
         if (b.role === 'anchor' && b.zone !== 'mid' && b.zone && dist2D(this.tactics.site[b.zone], pos) > 25) s += 15; // keep the other site
@@ -542,9 +561,12 @@ export class BotDirector {
       })
       .filter((x) => x.s < Infinity && x.d < 45)
       .sort((a, b) => a.s - b.s);
-    const k = kind === 'death' ? 2 : 1;
+    const sightings = this.plans[team].sightings;
+    const repeat = kind === 'seen' && sim.time - (sightings.get(enemy) ?? -99) < 4;
+    if (kind === 'seen' && !repeat) sightings.set(enemy, sim.time);
+    const k = repeat ? 0 : kind === 'death' ? 2 : 1;
     const responders = scored.slice(0, k);
-    if (team === 'D') this.rotate(pos, responders.map((r) => r.p));
+    if (team === 'D') this.rotate(pos, enemy, responders.map((r) => r.p));
     for (const { p, b } of responders) {
       const spot = this.coverNear(pos, 4, 12, pos, this.claims(p));
       this.setDest(p, b, spot ? spot.pos : pos, 'support', `${kind === 'death' ? 'trade a teammate' : 'support a sighting'} near ${sim.map.areaNameAt(pos)}`, spot ? spot.look : null);
@@ -557,18 +579,18 @@ export class BotDirector {
   /**
    * Defenders rotate to a site under attack: the mid player at the first
    * contact there, and one anchor from the other site once contacts pile up
-   * (two or more within 6 s). Each site is reinforced at most every 8 s, so a
-   * single sighting doesn't empty the other site.
+   * (two or more different enemies within 6 s). Each site is reinforced at
+   * most every 8 s, so a single attacker doesn't empty the other site.
    */
-  private rotate(pos: Vec3, already: SimPlayer[]): void {
+  private rotate(pos: Vec3, enemy: number, already: SimPlayer[]): void {
     const sim = this.sim;
     const now = sim.time;
     const t = this.tactics;
     const site = (['A', 'B'] as const).find((s) => dist2D(pos, t.site[s]) < 22);
     if (!site) return;
     const plan = this.plans.D;
-    plan.contacts[site] = plan.contacts[site].filter((x) => now - x < 6);
-    plan.contacts[site].push(now);
+    plan.contacts[site] = plan.contacts[site].filter((c) => now - c.time < 6 && c.enemy !== enemy);
+    plan.contacts[site].push({ time: now, enemy });
     if (now - plan.rotatedAt[site] < 8) return;
     const other: BombSite = site === 'A' ? 'B' : 'A';
     const pick = (pred: (b: Brain) => boolean) =>
@@ -804,13 +826,13 @@ export class BotDirector {
     if (p.id === sim.bomb.carrier && sim.bomb.state === 'carried') {
       const spots = this.tactics.holdSpots(site).filter((s) => sim.map.inRect(s.pos, r));
       const spot = chooseSpot(spots, this.claims(p), [], () => sim.random(), { minSep: 4, from: p.body.pos, maxTravel: 18 });
-      this.setDest(p, b, spot ? spot.pos : sim.map.rectCenter(r), 'hold', `carrier: plant at ${site}`, spot?.look ?? null);
+      this.setDest(p, b, spot ? spot.pos : sim.map.rectCenter(r), 'hold', `carrier: plant at ${site}`, spot?.look ?? null, b.route);
       b.holdUntil = Infinity;
       return;
     }
     const inner = this.tactics.holdSpots(site).filter((s) => sim.map.inRect(s.pos, { x0: r.x0 - 3, z0: r.z0 - 3, x1: r.x1 + 3, z1: r.z1 + 3 }));
     const spot = chooseSpot(inner, this.claims(p), this.claimedAreas(p), () => sim.random(), { minSep: 6, from: p.body.pos, maxTravel: 25 });
-    this.setDest(p, b, spot ? spot.pos : this.tactics.site[site], 'hold', `push into ${site}`, spot?.look ?? null);
+    this.setDest(p, b, spot ? spot.pos : this.tactics.site[site], 'hold', `push into ${site}`, spot?.look ?? null, b.route);
     b.holdUntil = Infinity;
   }
 
@@ -869,9 +891,10 @@ export class BotDirector {
     const outnumbered = b.visible >= 2 && b.visible > allies + 1;
     const hurt = p.health < 35 && b.pers.caution > 0.45;
     if (needReload && w!.reserve > 0) cmd.reload = true;
-    if (d.seekCover && (outnumbered || hurt || (needReload && w!.reserve > 0)) && b.state !== 'retreat') {
+    if (d.seekCover && (outnumbered || hurt || (needReload && w!.reserve > 0)) && b.state !== 'retreat' && now >= b.retreatReadyAt) {
       const spot = this.coverNear(p.body.pos, 3, 11, null, this.claims(p), sim.eyePos(target));
       if (spot) {
+        b.retreatReadyAt = now + 4 + b.pers.caution * 3;
         this.setDest(p, b, spot.pos, 'retreat', outnumbered ? `outnumbered ${b.visible} to ${allies + 1}` : hurt ? 'hurt: fall back' : 'reload in cover', null);
         b.advanceBlockedUntil = now + 2;
       }
@@ -984,7 +1007,7 @@ export class BotDirector {
         const surprised = sim.time - p.lastHurt < 0.5 ? 0.6 : 1;
         b.reactionAt = sim.time + d.reaction * b.pers.reaction * (0.75 + sim.random() * 0.5) * surprised;
         b.errAt = 0;
-        this.report(p.team, best.body.pos, 'seen', p.id);
+        this.report(p.team, best.body.pos, 'seen', p.id, best.id);
       }
       b.memory = { pos: { ...best.body.pos }, time: sim.time, seen: true };
     } else if (b.targetId !== null) {
@@ -994,7 +1017,7 @@ export class BotDirector {
       if (b.state === 'combat') this.resumeAfterFight(p, b);
     }
     // Being shot without seeing the shooter: turn around toward the noise.
-    if (!best && sim.time - p.lastHurt < 0.15) {
+    if (!best && sim.time - p.lastHurt < 0.15 && (!b.memory || sim.time - b.memory.time > 1)) {
       const enemy = sim.players.find((q) => q.alive && q.team !== p.team && sim.canSee(p, q));
       if (enemy) b.memory = { pos: { ...enemy.body.pos }, time: sim.time, seen: false };
     }
@@ -1117,6 +1140,7 @@ export class BotDirector {
         }
         return;
       }
+      if (p.id === sim.bomb.carrier && sim.bomb.state === 'carried' && b.state !== 'combat') return this.pushSite(p, b);
       const spot = this.coverNear(p.body.pos, 3, 10, null, this.claims(p));
       if (spot) this.setDest(p, b, spot.pos, b.state === 'combat' ? 'retreat' : b.state, 'stuck: new destination', spot.look);
     }

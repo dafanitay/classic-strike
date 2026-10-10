@@ -29,6 +29,11 @@ export class BotDebugView {
     this.group.renderOrder = 10;
   }
 
+  /** True when the overlay wants fresh data (it refreshes 4 times a second). */
+  due(now: number): boolean {
+    return now >= this.nextUpdate;
+  }
+
   update(bots: BotDebug[], now: number): void {
     if (now < this.nextUpdate) return;
     this.nextUpdate = now + 0.25;
@@ -49,6 +54,12 @@ export class BotDebugView {
       l.material = this.mats[b.team];
       (this.markers[i].material as THREE.Material) = this.markerMats[b.team];
       const pts = [b.pos, ...b.path].map((p) => new THREE.Vector3(p.x, p.y + 0.15, p.z));
+      // setFromPoints() can't grow an existing buffer: use a fresh geometry
+      // whenever the number of points changes.
+      if ((l.geometry.getAttribute('position')?.count ?? -1) !== pts.length) {
+        l.geometry.dispose();
+        l.geometry = new THREE.BufferGeometry();
+      }
       l.geometry.setFromPoints(pts);
       if (b.dest) this.markers[i].position.set(b.dest.x, b.dest.y + 0.6, b.dest.z);
     });
