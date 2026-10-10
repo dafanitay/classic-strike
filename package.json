@@ -1,0 +1,25 @@
+{
+  "name": "classic-strike",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-based tactical FPS inspired by classic Counter-Strike gameplay. Original code and assets.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "node tests/e2e/smoke.mjs"
+  },
+  "dependencies": {
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "playwright": "^1.56.1",
+    "typescript": "^5.6.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
+  }
+}
