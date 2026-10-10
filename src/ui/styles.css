@@ -82,6 +82,13 @@ input[type='text'] { background: #1a1b15; color: var(--text); border: 1px solid 
 .hud-top .alive { font-size: 11px; color: var(--muted); min-width: 52px; }
 .hud-top .alive.a { text-align: right; }
 .hud-loc { position: absolute; top: 48px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; text-shadow: 0 1px 2px #000; }
+.hud-top .timer.bomb { color: #ff5a3c; animation: bombblink 1s steps(2, start) infinite; }
+@keyframes bombblink { to { opacity: 0.45; } }
+.hud-progress { position: absolute; top: 58%; left: 50%; transform: translateX(-50%); width: 260px; text-align: center; text-shadow: 0 1px 2px #000; }
+.hud-progress .label { color: #e9e2c8; font-size: 13px; margin-bottom: 5px; letter-spacing: 0.5px; }
+.hud-progress .bar { height: 8px; background: rgba(0, 0, 0, 0.55); border: 1px solid rgba(255, 178, 46, 0.45); }
+.hud-progress .fill { height: 100%; width: 0; background: var(--amber); }
+.hud-bomb { position: absolute; left: 22px; bottom: 96px; padding: 3px 9px; font: bold 13px 'Arial Black', Impact, var(--font); letter-spacing: 1px; color: #1d1a12; background: var(--amber); border-radius: 2px; }
 .hud-hint { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); color: #e9e2c8; font-size: 13px; text-shadow: 0 1px 2px #000; text-align: center; }
 .hud-center { position: absolute; top: 26%; left: 50%; transform: translateX(-50%); text-align: center; text-shadow: 0 2px 4px #000; }
 .hud-center .big { font-family: Impact, 'Arial Black', var(--font); font-size: 40px; letter-spacing: 2px; }

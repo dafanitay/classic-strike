@@ -128,6 +128,22 @@ const aTeam = sA2.players.find((p) => p.id === aId).team;
 check('the round ends, the winner scores, and a new round starts for both', sA2.score[aTeam] === 1 && sB2.score[aTeam] === 1 && sA2.round === sB2.round, `score ${JSON.stringify(sA2.score)} round ${sA2.round}`);
 check('the dead player respawns for the next round', sB2.players.find((p) => p.id === bId).alive);
 
+// --- bomb: the Attacker plants online; the server decides, both clients see it
+const atkPage = aTeam === 'A' ? A : B;
+const defPage = atkPage === A ? B : A;
+await atkPage.waitForFunction(() => window.__cs.sim.phase === 'live', null, { timeout: 12000 });
+const carrierOk = await atkPage.evaluate(() => window.__cs.sim.bomb.state === 'carried' && window.__cs.sim.bomb.carrier === window.__cs.me.id);
+check('the (only) Attacker starts the round with the bomb', carrierOk);
+await atkPage.evaluate(() => window.__cs.net.send({ t: 'debug', op: 'teleport', x: 63, z: 11, yaw: Math.PI / 2 })); // bombsite A
+await atkPage.waitForTimeout(400);
+await atkPage.evaluate(() => window.__cs.input.setKey('KeyE', true));
+const plantedBoth = await Promise.all([atkPage, defPage].map((P) => P.waitForFunction(() => window.__cs.sim.bomb.state === 'planted', null, { timeout: 8000 }).then(() => true, () => false)));
+await atkPage.evaluate(() => window.__cs.input.setKey('KeyE', false));
+check('holding E in site A plants the bomb, seen by both clients', plantedBoth.every(Boolean), JSON.stringify(plantedBoth));
+const defTimer = await defPage.waitForFunction(() => document.querySelector('.hud-top .timer')?.textContent === 'BOMB A', null, { timeout: 3000 }).then(() => true, () => false);
+check('the Defender\'s HUD shows the bomb at A', defTimer);
+await defPage.screenshot({ path: `${out}/mp-05-defender-bomb-planted.png` });
+
 // --- disconnect + reconnect (B reloads its tab: same session storage, same token)
 await B.reload();
 await A.waitForFunction(() => [...document.querySelectorAll('.kf')].some((e) => /disconnected|reconnected/.test(e.textContent)), null, { timeout: 10000 }).then(() => check('host is told when the friend drops / comes back', true)).catch(() => check('host is told when the friend drops / comes back', false));

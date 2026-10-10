@@ -9,12 +9,14 @@ import { NetMirror } from './mirror';
 type Scenario = {
   /** Optional start cell (else the normal spawn). */
   start?: { x: number; z: number };
+  /** Make the predicting player the bomb carrier. */
+  bombCarrier?: boolean;
   yaw0: number;
   input: (tick: number, yaw: number) => PlayerCmd;
 };
 
 /** Max distance between where the client predicted each input and where the server put it. */
-function predictionError(sc: Scenario): { maxErr: number; compared: number; maxY: number } {
+function predictionError(sc: Scenario): { maxErr: number; compared: number; maxY: number; planted: boolean } {
   const map = buildMap(DEPOT);
   const server = new Simulation(map, { freezeTime: 0.05 }, 1);
   const me = server.addPlayer('me', 'A', false);
@@ -26,6 +28,7 @@ function predictionError(sc: Scenario): { maxErr: number; compared: number; maxY
     me.body.pos = { x: c.x, y: c.y, z: c.z };
     me.body.onGround = true;
   }
+  if (sc.bombCarrier) server.bomb.carrier = me.id;
   let maxY = 0;
   const mirror = new NetMirror(new Simulation(map), me.id);
   mirror.applySnapshot(encodeSnapshot(server, 0, [], me.id), 0);
@@ -75,7 +78,7 @@ function predictionError(sc: Scenario): { maxErr: number; compared: number; maxY
     compare(c.seq);
     mirror.applySnapshot(encodeSnapshot(server, c.seq, [], me.id), 0);
   }
-  return { maxErr, compared, maxY };
+  return { maxErr, compared, maxY, planted: server.bomb.state === 'planted' };
 }
 
 describe('client prediction', () => {
@@ -141,5 +144,23 @@ describe('client prediction', () => {
         expect(r.maxErr, `${JSON.stringify(st.start)} seed ${seed}`).toBeLessThan(1e-6);
       }
     }
+  });
+
+  it('stays exact while planting (movement locks on the same ticks on both sides)', () => {
+    // Bombsite A; hold E with movement keys pressed, let go, walk, plant again.
+    const r = predictionError({
+      start: { x: 31, z: 5 },
+      yaw0: 0,
+      bombCarrier: true,
+      input: (tick, yaw) => ({
+        ...emptyCmd(yaw + Math.sin(tick / 40) * 0.02, 0),
+        forward: tick % 90 < 60 ? 1 : -1,
+        side: Math.sin(tick / 13) > 0.5 ? 1 : 0,
+        use: tick % 300 < 250 && tick > 20,
+      }),
+    });
+    expect(r.planted).toBe(true); // it really did plant during the run
+    expect(r.compared).toBeGreaterThan(500);
+    expect(r.maxErr).toBeLessThan(1e-6);
   });
 });

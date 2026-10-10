@@ -189,6 +189,7 @@ export class Input {
       altFire: this.mouse2,
       reload: this.pendingReload,
       slot: this.pendingSlot,
+      use: this.keys.has('KeyE'),
     };
     this.pendingReload = false;
     this.pendingSlot = 0;

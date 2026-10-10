@@ -16,7 +16,8 @@
     "start": "node dist-server/server.mjs",
     "e2e:mp": "node tests/e2e/multiplayer.mjs",
     "e2e:feedback": "node tests/e2e/feedback.mjs",
-    "e2e:elevation": "node tests/e2e/elevation.mjs"
+    "e2e:elevation": "node tests/e2e/elevation.mjs",
+    "e2e:bomb": "node tests/e2e/bomb.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

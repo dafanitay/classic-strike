@@ -1,3 +1,4 @@
+import { BombModel } from './bomb';
 import * as THREE from 'three';
 import type { MapData, Team } from '../shared/map';
 import type { Quality } from '../settings';
@@ -14,6 +15,7 @@ export class GameRenderer {
   readonly viewmodel: ViewModel;
   readonly effects: Effects;
   readonly muzzleLight = new THREE.PointLight(0xffc070, 0, 9, 2);
+  readonly bomb = new BombModel();
   private readonly sun = new THREE.DirectionalLight(0xfff0d6, 2.2);
   private readonly map: MapData;
   private world: WorldMeshes | null = null;
@@ -54,6 +56,7 @@ export class GameRenderer {
     this.viewmodel = new ViewModel(flash);
     this.effects = new Effects(puffTexture(), flash);
     this.scene.add(this.effects.group);
+    this.scene.add(this.bomb.group);
     this.applyQuality(quality);
     this.resize();
   }
@@ -136,6 +139,7 @@ export class GameRenderer {
   dispose(): void {
     for (const id of this.avatarIds()) this.removeAvatar(id);
     this.world?.dispose();
+    this.bomb.dispose();
     this.renderer.dispose();
   }
 }

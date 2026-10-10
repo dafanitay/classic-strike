@@ -1,6 +1,6 @@
 import { rayAabb } from './collision';
 import type { MapData, Team } from './map';
-import { PHYS, bodyHeight, eyeHeight, makeBody, stepMovement, type MoveBody } from './movement';
+import { PHYS, bodyHeight, eyeHeight, makeBody, stepMovement, type MoveBody, type MoveInput } from './movement';
 import { expandPattern, patternStep, type RecoilOffset } from './recoil';
 import { add, clamp, dirFromAngles, dist, makeRng, scale, type Vec3 } from './vec';
 import {
@@ -37,11 +37,13 @@ export interface PlayerCmd {
   altFire: boolean;
   reload: boolean;
   slot: WeaponSlot | 0;
+  /** Hold to plant (bomb carrier in a site) or defuse (defender at the bomb). */
+  use: boolean;
 }
 
 export const emptyCmd = (yaw = 0, pitch = 0): PlayerCmd => ({
   forward: 0, side: 0, jump: false, crouch: false, walk: false, yaw, pitch,
-  fire: false, altFire: false, reload: false, slot: 0,
+  fire: false, altFire: false, reload: false, slot: 0, use: false,
 });
 
 export interface SimPlayer {
@@ -76,6 +78,18 @@ export interface SimPlayer {
   stepAccum: number;
   lastHurt: number;
   respawnAt: number;
+  /** Owns a defuse kit (Defenders only; lost on death). */
+  kit: boolean;
+  /** Plant or defuse in progress, and when it completes. */
+  action: 'plant' | 'defuse' | null;
+  actionEnd: number;
+  /**
+   * Set when a plant/defuse completes; keeps movement locked until use is
+   * released. Without it the server would free the player the tick the bomb
+   * is planted while the client, which learns of the plant a snapshot later,
+   * still holds them, and prediction would drift.
+   */
+  useLatch: boolean;
   cmd: PlayerCmd;
   /**
    * Network-driven player: moves only when one of its commands is run via
@@ -85,11 +99,47 @@ export interface SimPlayer {
   external: boolean;
 }
 
+/** What a kill was made with: a weapon, or the bomb's explosion. */
+export type KillSource = WeaponId | 'bomb';
+
+export type BombSite = 'A' | 'B';
+
+/**
+ * The bomb ("the charge"). One per round; given to a random Attacker at the
+ * round start, dropped where its carrier dies, picked up by walking over it.
+ */
+export interface BombState {
+  state: 'none' | 'carried' | 'dropped' | 'planted' | 'defused' | 'exploded';
+  carrier: number; // player id, 0 = nobody
+  pos: Vec3; // where it lies (dropped / planted)
+  site: BombSite | null;
+  plantedAt: number;
+  explodeAt: number;
+  defuser: number; // player id currently defusing, 0 = nobody
+}
+
+export const BOMB = {
+  plantTime: 3.2,
+  fuse: 40,
+  defuseTime: 10,
+  kitDefuseTime: 5,
+  /** Horizontal reach to defuse or pick up. */
+  defuseReach: 1.5,
+  pickupReach: 1.0,
+  /** Explosion: lethal near the bomb, falling to 0 at this radius. */
+  blastRadius: 20,
+  blastDamage: 500,
+  plantReward: 300,
+  defuseReward: 300,
+  /** Extra money for every Attacker if the bomb was planted but they lost. */
+  plantedLossBonus: 800,
+} as const;
+
 export type SimEvent =
   | { type: 'shot'; shooter: number; weapon: WeaponId; origin: Vec3; end: Vec3; hitWorld: boolean; normal?: Vec3 }
   | { type: 'melee'; shooter: number; hit: boolean; pos: Vec3 }
   | { type: 'hit'; attacker: number; victim: number; damage: number; group: HitGroup; pos: Vec3 }
-  | { type: 'kill'; killer: number; victim: number; weapon: WeaponId; headshot: boolean }
+  | { type: 'kill'; killer: number; victim: number; weapon: KillSource; headshot: boolean }
   | { type: 'reload'; player: number; weapon: WeaponId }
   | { type: 'dryfire'; player: number }
   | { type: 'switch'; player: number; weapon: WeaponId }
@@ -98,6 +148,14 @@ export type SimEvent =
   | { type: 'jump'; player: number; pos: Vec3 }
   | { type: 'land'; player: number; pos: Vec3 }
   | { type: 'buy'; player: number; item: string }
+  | { type: 'bombPickup'; player: number }
+  | { type: 'bombDrop'; player: number; pos: Vec3 }
+  | { type: 'plantStart'; player: number; site: BombSite }
+  | { type: 'defuseStart'; player: number; kit: boolean }
+  | { type: 'actionAbort'; player: number; action: 'plant' | 'defuse' }
+  | { type: 'planted'; player: number; site: BombSite; pos: Vec3 }
+  | { type: 'defused'; player: number }
+  | { type: 'exploded'; pos: Vec3 }
   | { type: 'roundStart'; round: number }
   | { type: 'freezeEnd' }
   | { type: 'roundEnd'; winner: Team | null; reason: string }
@@ -117,6 +175,8 @@ export interface MatchConfig {
   lossBase: number;
   lossStep: number;
   friendlyFire: boolean;
+  /** Bomb defusal (true) or plain elimination (false). */
+  bomb: boolean;
 }
 
 export const DEFAULT_MATCH: MatchConfig = {
@@ -131,6 +191,7 @@ export const DEFAULT_MATCH: MatchConfig = {
   lossBase: 1400,
   lossStep: 500,
   friendlyFire: false,
+  bomb: true,
 };
 
 export const TEAM_NAME: Record<Team, string> = { A: 'Attackers', D: 'Defenders' };
@@ -141,6 +202,7 @@ export const EQUIPMENT = {
   helmet: { name: 'Kevlar + Helmet', price: 1000 },
   ammo1: { name: 'Primary Ammo', price: 80 },
   ammo2: { name: 'Secondary Ammo', price: 40 },
+  defuser: { name: 'Defuse Kit', price: 400 },
 } as const;
 export type EquipmentId = keyof typeof EQUIPMENT;
 export type BuyItem = WeaponId | EquipmentId;
@@ -199,6 +261,7 @@ export class Simulation {
   lossStreak: Record<Team, number> = { A: 0, D: 0 };
   lastWinner: Team | null = null;
   lastReason = '';
+  bomb: BombState = { state: 'none', carrier: 0, pos: { x: 0, y: 0, z: 0 }, site: null, plantedAt: 0, explodeAt: 0, defuser: 0 };
   private nextId = 1;
   private readonly rng: () => number;
   /**
@@ -255,6 +318,10 @@ export class Simulation {
       stepAccum: 0,
       lastHurt: -10,
       respawnAt: 0,
+      kit: false,
+      action: null,
+      actionEnd: 0,
+      useLatch: false,
       cmd: emptyCmd(),
       external: false,
     };
@@ -266,11 +333,14 @@ export class Simulation {
 
   removePlayer(id: number): void {
     const i = this.players.findIndex((p) => p.id === id);
-    if (i >= 0) this.players.splice(i, 1);
+    if (i < 0) return;
+    this.dropBomb(this.players[i]);
+    this.players.splice(i, 1);
   }
 
   setTeam(p: SimPlayer, team: Team): void {
     if (p.team === team) return;
+    this.dropBomb(p);
     p.team = team;
     p.alive = false;
     p.respawnAt = this.time + 1;
@@ -305,6 +375,9 @@ export class Simulation {
     p.scope = 0;
     p.rescopeAt = 0;
     p.fireHeld = true; // avoid firing from a held button the instant you spawn
+    p.action = null;
+    p.actionEnd = 0;
+    p.useLatch = false;
     p.cmd = emptyCmd(p.yaw, 0);
     if (!p.weapons[p.current]) p.current = p.weapons[1] ? 1 : 2;
   }
@@ -363,6 +436,9 @@ export class Simulation {
       if (p.armor >= 100) price = 350; // helmet only
     } else if (item === 'kevlar') {
       if (p.armor >= 100) return 'You already have full armour.';
+    } else if (item === 'defuser') {
+      if (p.team !== 'D') return 'Only Defenders can carry a defuse kit.';
+      if (p.kit) return 'You already have a defuse kit.';
     } else if (item === 'ammo1' || item === 'ammo2') {
       const w = p.weapons[item === 'ammo1' ? 1 : 2];
       if (!w) return 'No weapon in that slot.';
@@ -376,6 +452,7 @@ export class Simulation {
     if (p.money < price) return 'Not enough money.';
     p.money -= price;
     if (item === 'kevlar') p.armor = 100;
+    else if (item === 'defuser') p.kit = true;
     else if (item === 'helmet') {
       p.armor = 100;
       p.helmet = true;
@@ -416,6 +493,7 @@ export class Simulation {
       p.deaths = 0;
       p.armor = 0;
       p.helmet = false;
+      p.kit = false;
       this.giveDefaultLoadout(p);
     }
     this.startRound();
@@ -433,6 +511,7 @@ export class Simulation {
         p.money = s.money;
         p.armor = s.armor;
         p.helmet = s.helmet;
+        p.kit = s.kit;
         p.kills = s.kills;
         p.deaths = s.deaths;
         p.weapons = cloneWeapons(s.weapons);
@@ -449,7 +528,7 @@ export class Simulation {
   private roundSnapshot: {
     score: Record<Team, number>;
     lossStreak: Record<Team, number>;
-    players: Map<number, { money: number; armor: number; helmet: boolean; kills: number; deaths: number; weapons: SimPlayer['weapons']; current: WeaponSlot }>;
+    players: Map<number, { money: number; armor: number; helmet: boolean; kit: boolean; kills: number; deaths: number; weapons: SimPlayer['weapons']; current: WeaponSlot }>;
   } | null = null;
 
   startRound(): void {
@@ -465,9 +544,18 @@ export class Simulation {
       if (!p.alive) {
         p.armor = 0;
         p.helmet = false;
+        p.kit = false;
         this.giveDefaultLoadout(p);
       }
       this.spawn(p, counters[p.team]++);
+    }
+    this.bomb = { state: 'none', carrier: 0, pos: { x: 0, y: 0, z: 0 }, site: null, plantedAt: 0, explodeAt: 0, defuser: 0 };
+    if (this.config.bomb) {
+      const attackers = order.filter((p) => p.team === 'A');
+      if (attackers.length) {
+        this.bomb.state = 'carried';
+        this.bomb.carrier = attackers[Math.floor(this.rng() * attackers.length)].id;
+      }
     }
     this.roundSnapshot = {
       score: { ...this.score },
@@ -475,7 +563,7 @@ export class Simulation {
       players: new Map(
         this.players.map((p) => [
           p.id,
-          { money: p.money, armor: p.armor, helmet: p.helmet, kills: p.kills, deaths: p.deaths, weapons: cloneWeapons(p.weapons), current: p.current },
+          { money: p.money, armor: p.armor, helmet: p.helmet, kit: p.kit, kills: p.kills, deaths: p.deaths, weapons: cloneWeapons(p.weapons), current: p.current },
         ]),
       ),
     };
@@ -496,10 +584,17 @@ export class Simulation {
       this.lossStreak[winner] = 0;
       const lossBonus = this.config.lossBase + this.config.lossStep * Math.min(this.lossStreak[loser], 4);
       this.lossStreak[loser]++;
+      const plantedBonus = winner === 'D' && (this.bomb.state === 'planted' || this.bomb.state === 'defused') ? BOMB.plantedLossBonus : 0;
       for (const p of this.players) {
-        p.money = Math.min(this.config.maxMoney, p.money + (p.team === winner ? this.config.winReward : lossBonus));
+        const add = p.team === winner ? this.config.winReward : lossBonus + (p.team === 'A' ? plantedBonus : 0);
+        p.money = Math.min(this.config.maxMoney, p.money + add);
       }
     }
+    for (const p of this.players) {
+      p.action = null;
+      p.actionEnd = 0;
+    }
+    this.bomb.defuser = 0;
     this.events.push({ type: 'roundEnd', winner, reason });
     if (winner && this.score[winner] >= this.config.roundsToWin) {
       this.phase = 'matchEnd';
@@ -534,10 +629,15 @@ export class Simulation {
       case 'live': {
         const a = this.aliveCount('A');
         const d = this.aliveCount('D');
-        if (a === 0 && d === 0) this.endRound(null, 'Round draw');
+        if (this.bomb.state === 'planted') {
+          // Once planted, only the bomb or the Defenders being wiped out end
+          // the round: dead Attackers no longer matter.
+          if (this.time >= this.bomb.explodeAt) this.explode();
+          else if (d === 0) this.endRound('A', `${TEAM_NAME.A} eliminated the enemy`);
+        } else if (a === 0 && d === 0) this.endRound(null, 'Round draw');
         else if (a === 0) this.endRound('D', `${TEAM_NAME.D} eliminated the enemy`);
         else if (d === 0) this.endRound('A', `${TEAM_NAME.A} eliminated the enemy`);
-        else if (this.time >= this.phaseEnd) this.endRound('D', 'Time ran out — Defenders hold');
+        else if (this.time >= this.phaseEnd) this.endRound('D', this.config.bomb ? 'Time ran out — the bomb was not planted' : 'Time ran out — Defenders hold');
         break;
       }
       case 'roundEnd':
@@ -570,15 +670,47 @@ export class Simulation {
     p.cmd = cmd;
   }
 
+  /**
+   * The movement input a command produces this tick. Shared with client
+   * prediction (NetMirror) so both apply the same locks: nobody moves during
+   * the freeze, and a player planting or defusing stands still. Call once per
+   * command, first: it also releases the use latch when use is let go.
+   */
+  movementInput(p: SimPlayer, cmd: PlayerCmd): MoveInput {
+    if (!cmd.use) p.useLatch = false;
+    const frozen = this.phase === 'freeze' || this.phase === 'matchEnd';
+    if (frozen || this.actionLocked(p, cmd)) return { forward: 0, side: 0, jump: false, crouch: cmd.crouch, walk: false, yaw: cmd.yaw };
+    return { forward: cmd.forward, side: cmd.side, jump: cmd.jump, crouch: cmd.crouch, walk: cmd.walk, yaw: cmd.yaw };
+  }
+
+  /** True while holding use plants or defuses, or still holds after finishing (locks movement). */
+  actionLocked(p: SimPlayer, cmd: PlayerCmd): boolean {
+    return cmd.use && (p.useLatch || this.canPlant(p) !== null || this.canDefuse(p));
+  }
+
+  /** The site the player could plant at right now, or null. */
+  canPlant(p: SimPlayer): BombSite | null {
+    if (this.phase !== 'live' || !p.alive || !p.body.onGround) return null;
+    if (this.bomb.state !== 'carried' || this.bomb.carrier !== p.id) return null;
+    for (const site of ['A', 'B'] as const) if (this.map.inRect(p.body.pos, this.map.def.bombsites[site])) return site;
+    return null;
+  }
+
+  canDefuse(p: SimPlayer): boolean {
+    if (this.phase !== 'live' || !p.alive || p.team !== 'D' || !p.body.onGround) return false;
+    if (this.bomb.state !== 'planted' || (this.bomb.defuser !== 0 && this.bomb.defuser !== p.id)) return false;
+    const b = this.bomb.pos;
+    return Math.hypot(p.body.pos.x - b.x, p.body.pos.z - b.z) <= BOMB.defuseReach && Math.abs(p.body.pos.y - b.y) < 1.2;
+  }
+
   private tickPlayer(p: SimPlayer): void {
     const cmd = p.cmd;
     p.yaw = cmd.yaw;
     p.pitch = clamp(cmd.pitch, -1.55, 1.55);
     const frozen = this.phase === 'freeze' || this.phase === 'matchEnd';
 
-    const moveIn = frozen
-      ? { forward: 0, side: 0, jump: false, crouch: cmd.crouch, walk: false, yaw: p.yaw }
-      : { forward: cmd.forward, side: cmd.side, jump: cmd.jump, crouch: cmd.crouch, walk: cmd.walk, yaw: p.yaw };
+    const moveIn = this.movementInput(p, cmd);
+    const locked = this.actionLocked(p, cmd);
     const before = { ...p.body.pos };
     const mv = stepMovement(this.map.world, p.body, moveIn, this.maxSpeedOf(p), TICK_DT);
     if (mv.jumped) this.events.push({ type: 'jump', player: p.id, pos: { ...p.body.pos } });
@@ -595,8 +727,92 @@ export class Simulation {
       }
     }
     if (p.body.pos.y < -20) this.damage(p, null, 1000, 'chest', p.body.pos, 'knife');
+    if (!p.alive) return;
 
-    this.tickWeapon(p, cmd, frozen);
+    this.tickAction(p, cmd);
+    if (this.bomb.state === 'dropped' && p.team === 'A' && this.phase === 'live') {
+      const b = this.bomb.pos;
+      if (Math.hypot(p.body.pos.x - b.x, p.body.pos.z - b.z) <= BOMB.pickupReach && Math.abs(p.body.pos.y - b.y) < 1.5) {
+        this.bomb.state = 'carried';
+        this.bomb.carrier = p.id;
+        this.events.push({ type: 'bombPickup', player: p.id });
+      }
+    }
+    // Planting and defusing occupy your hands.
+    this.tickWeapon(p, locked ? { ...cmd, fire: false, altFire: false, reload: false } : cmd, frozen);
+  }
+
+  /** Progress, completion or cancellation of a plant / defuse. */
+  private tickAction(p: SimPlayer, cmd: PlayerCmd): void {
+    const site = cmd.use ? this.canPlant(p) : null;
+    const kind = !cmd.use ? null : site ? 'plant' : this.canDefuse(p) ? 'defuse' : null;
+    if (p.action && p.action !== kind) {
+      this.events.push({ type: 'actionAbort', player: p.id, action: p.action });
+      if (p.action === 'defuse' && this.bomb.defuser === p.id) this.bomb.defuser = 0;
+      p.action = null;
+      p.actionEnd = 0;
+    }
+    if (!kind) return;
+    if (!p.action) {
+      p.action = kind;
+      if (kind === 'plant') {
+        p.actionEnd = this.time + BOMB.plantTime;
+        this.events.push({ type: 'plantStart', player: p.id, site: site! });
+      } else {
+        p.actionEnd = this.time + (p.kit ? BOMB.kitDefuseTime : BOMB.defuseTime);
+        this.bomb.defuser = p.id;
+        this.events.push({ type: 'defuseStart', player: p.id, kit: p.kit });
+      }
+    }
+    if (this.time + 1e-9 < p.actionEnd) return;
+    p.action = null;
+    p.actionEnd = 0;
+    p.useLatch = true;
+    if (kind === 'plant') {
+      const pos = { x: p.body.pos.x, y: p.body.pos.y, z: p.body.pos.z };
+      this.bomb = { state: 'planted', carrier: 0, pos, site: site!, plantedAt: this.time, explodeAt: this.time + BOMB.fuse, defuser: 0 };
+      this.phaseEnd = this.bomb.explodeAt; // the round clock becomes the fuse
+      p.money = Math.min(this.config.maxMoney, p.money + BOMB.plantReward);
+      this.events.push({ type: 'planted', player: p.id, site: site!, pos: { ...pos } });
+    } else {
+      this.bomb.state = 'defused';
+      this.bomb.defuser = 0;
+      p.money = Math.min(this.config.maxMoney, p.money + BOMB.defuseReward);
+      this.events.push({ type: 'defused', player: p.id });
+      this.endRound('D', 'The bomb has been defused');
+    }
+  }
+
+  /** Drops the bomb where its carrier stands (on death, leaving, team change). */
+  private dropBomb(p: SimPlayer): void {
+    if (this.bomb.state !== 'carried' || this.bomb.carrier !== p.id) return;
+    const pos = { x: p.body.pos.x, y: this.map.surfaceY(p.body.pos), z: p.body.pos.z };
+    this.bomb.state = 'dropped';
+    this.bomb.carrier = 0;
+    this.bomb.pos = pos;
+    this.events.push({ type: 'bombDrop', player: p.id, pos: { ...pos } });
+  }
+
+  private explode(): void {
+    const b = this.bomb.pos;
+    this.bomb.state = 'exploded';
+    this.bomb.defuser = 0;
+    this.events.push({ type: 'exploded', pos: { ...b } });
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      const d = Math.hypot(p.body.pos.x - b.x, p.body.pos.y + 1 - b.y, p.body.pos.z - b.z);
+      if (d >= BOMB.blastRadius) continue;
+      const k = 1 - d / BOMB.blastRadius;
+      let dmg = BOMB.blastDamage * k * k;
+      // Armour absorbs part of the blast, as it does a bullet to the chest.
+      if (p.armor > 0) {
+        const absorbed = Math.min(p.armor * 2, dmg * 0.5);
+        p.armor = Math.max(0, Math.round(p.armor - absorbed / 2));
+        dmg -= absorbed;
+      }
+      if (dmg >= 1) this.damage(p, null, Math.round(dmg), 'chest', { ...p.body.pos }, 'bomb');
+    }
+    this.endRound('A', 'Target destroyed');
   }
 
   selectSlot(p: SimPlayer, slot: WeaponSlot, force = false): void {
@@ -796,7 +1012,7 @@ export class Simulation {
   }
 
   /** Applies final health damage and handles death bookkeeping. */
-  damage(victim: SimPlayer, attacker: SimPlayer | null, amount: number, group: HitGroup, pos: Vec3, weapon: WeaponId): void {
+  damage(victim: SimPlayer, attacker: SimPlayer | null, amount: number, group: HitGroup, pos: Vec3, weapon: KillSource): void {
     if (!victim.alive) return;
     victim.health -= amount;
     victim.lastHurt = this.time;
@@ -810,10 +1026,16 @@ export class Simulation {
       victim.deaths++;
       victim.respawnAt = this.time + 2;
       victim.scope = 0;
+      victim.kit = false;
+      if (victim.action === 'defuse' && this.bomb.defuser === victim.id) this.bomb.defuser = 0;
+      victim.action = null;
+      victim.actionEnd = 0;
+      this.dropBomb(victim);
       if (attacker && attacker !== victim) {
         if (attacker.team !== victim.team) {
           attacker.kills++;
-          attacker.money = Math.min(this.config.maxMoney, attacker.money + WEAPONS[weapon].killReward);
+          const reward = weapon === 'bomb' ? 0 : WEAPONS[weapon].killReward;
+          attacker.money = Math.min(this.config.maxMoney, attacker.money + reward);
         } else {
           attacker.kills--;
         }

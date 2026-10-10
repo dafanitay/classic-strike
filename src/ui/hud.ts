@@ -1,6 +1,6 @@
 import type { Team } from '../shared/map';
 import { BUYABLE, WEAPONS, type WeaponId } from '../shared/weapons';
-import { EQUIPMENT, TEAM_NAME, type BuyItem, type SimPlayer, type Simulation } from '../shared/sim';
+import { BOMB, EQUIPMENT, TEAM_NAME, type BuyItem, type KillSource, type SimPlayer, type Simulation } from '../shared/sim';
 import { DEFAULT_CROSSHAIR, type CrosshairSettings } from '../settings';
 import { crosshairLayout, type Rect } from './crosshair';
 import { button, el } from './dom';
@@ -46,6 +46,10 @@ export class Hud {
   private readonly buyMsg: HTMLElement;
   private readonly buyItems: { item: BuyItem; el: HTMLButtonElement }[] = [];
   private readonly fps: HTMLElement;
+  private readonly progress: HTMLElement;
+  private readonly progressFill: HTMLElement;
+  private readonly progressLabel: HTMLElement;
+  private readonly bombTag: HTMLElement;
   private centerUntil = 0;
   private moneyFlashUntil = 0;
   private lastMoney = -1;
@@ -85,6 +89,11 @@ export class Hud {
     this.centerBig = el('div', 'big', '', this.center);
     this.centerSmall = el('div', 'small', '', this.center);
     this.hint = el('div', 'hud-hint', '', root);
+    this.progress = el('div', 'hud-progress hidden', undefined, root);
+    this.progressLabel = el('div', 'label', '', this.progress);
+    const bar = el('div', 'bar', undefined, this.progress);
+    this.progressFill = el('div', 'fill', undefined, bar);
+    this.bombTag = el('div', 'hud-bomb hidden', '', root);
 
     this.moneyWrap = el('div', 'hud-money', undefined, root);
     el('span', 'hud-icon', '$', this.moneyWrap);
@@ -111,11 +120,12 @@ export class Hud {
     this.buy = el('div', 'buymenu panel hidden', undefined, root);
     el('h2', '', 'Buy Menu', this.buy);
     const grid = el('div', 'buy-grid', undefined, this.buy);
-    const items: BuyItem[] = [...BUYABLE, 'kevlar', 'helmet', 'ammo1', 'ammo2'];
+    const items: BuyItem[] = [...BUYABLE, 'kevlar', 'helmet', 'ammo1', 'ammo2', 'defuser'];
     items.forEach((item, i) => {
-      const key = String((i + 1) % 10);
+      // Number keys 1–9, 0 for the first ten items; the rest are click-only.
+      const key = i < 10 ? String((i + 1) % 10) : '';
       const b = button('', 'buy-item', () => this.onBuy(item), grid);
-      el('span', 'k', key, b);
+      el('span', 'k', key || '·', b);
       const name = el('span', '', undefined, b);
       const isW = item in WEAPONS;
       el('span', 'cat', isW ? WEAPONS[item as WeaponId].cls : 'equipment', name);
@@ -170,7 +180,7 @@ export class Hud {
     slot.until = now + 1.1;
   }
 
-  update(sim: Simulation, me: SimPlayer, view: SimPlayer | null, now: number, opts: { spreadPx: number; scoped: boolean; showCrosshair: boolean; location: string; hint: string; fps: number }): void {
+  update(sim: Simulation, me: SimPlayer, view: SimPlayer | null, now: number, opts: { spreadPx: number; scoped: boolean; showCrosshair: boolean; location: string; hint: string; fps: number}): void {
     const p = view ?? me;
     this.set(this.health, String(Math.max(0, Math.ceil(p.health))));
     this.toggle(this.health, 'low', p.health <= 25);
@@ -199,8 +209,27 @@ export class Hud {
     if (sim.phase === 'freeze' || sim.phase === 'live') t = sim.timeLeft();
     if (sim.phase === 'freeze') t = sim.config.roundTime;
     const tt = Math.ceil(t);
-    this.set(this.timer, sim.phase === 'warmup' ? 'WARMUP' : `${Math.floor(tt / 60)}:${String(tt % 60).padStart(2, '0')}`);
+    // Once planted the clock is replaced by the bomb (as in the classics, the
+    // fuse is heard, not read).
+    const planted = sim.bomb.state === 'planted' && sim.phase === 'live';
+    this.set(this.timer, sim.phase === 'warmup' ? 'WARMUP' : planted ? `BOMB ${sim.bomb.site}` : `${Math.floor(tt / 60)}:${String(tt % 60).padStart(2, '0')}`);
     this.toggle(this.timer, 'freeze', sim.phase === 'freeze');
+    this.toggle(this.timer, 'bomb', planted);
+
+    // Plant / defuse progress.
+    const acting = p.alive && p.action !== null && p.actionEnd > sim.time;
+    this.toggle(this.progress, 'hidden', !acting);
+    if (acting) {
+      const total = p.action === 'plant' ? BOMB.plantTime : p.kit ? BOMB.kitDefuseTime : BOMB.defuseTime;
+      const frac = Math.max(0, Math.min(1, 1 - (p.actionEnd - sim.time) / total));
+      this.set(this.progressLabel, p.action === 'plant' ? 'Planting the bomb…' : p.kit ? 'Defusing (kit)…' : 'Defusing…');
+      this.progressFill.style.width = `${Math.round(frac * 1000) / 10}%`;
+    }
+    // Bomb / kit indicator for the viewed player.
+    const carrying = sim.bomb.state === 'carried' && sim.bomb.carrier === p.id;
+    const tag = carrying ? 'BOMB' : p.kit && p.alive ? 'KIT' : '';
+    this.set(this.bombTag, tag);
+    this.toggle(this.bombTag, 'hidden', !tag);
     this.set(this.loc, opts.location);
     this.set(this.hint, opts.hint);
 
@@ -265,10 +294,10 @@ export class Hud {
     this.centerUntil = now + duration;
   }
 
-  kill(killer: SimPlayer | undefined, victim: SimPlayer, weapon: WeaponId, headshot: boolean, involvesMe: boolean, now: number): void {
+  kill(killer: SimPlayer | undefined, victim: SimPlayer, weapon: KillSource, headshot: boolean, involvesMe: boolean, now: number): void {
     const row = el('div', 'kf' + (involvesMe ? ' me' : ''));
     if (killer && killer !== victim) el('span', killer.team.toLowerCase(), killer.name, row);
-    el('span', 'w', killer && killer !== victim ? WEAPONS[weapon].name : 'died', row);
+    el('span', 'w', weapon === 'bomb' ? 'bomb' : killer && killer !== victim ? WEAPONS[weapon].name : 'died', row);
     if (headshot) el('span', 'hs', '[HS]', row);
     el('span', victim.team.toLowerCase(), victim.name, row);
     row.dataset.until = String(now + 6);
@@ -319,7 +348,9 @@ export class Hud {
       for (const p of players) {
         const tr = el('tr', (p.alive ? '' : 'dead') + (p === me ? ' me' : ''), undefined, table);
         el('td', '', p.name + (p.isBot ? ' (bot)' : ''), tr);
-        el('td', '', p.alive ? '' : 'dead', tr);
+        // Teammates see who carries the bomb or a kit; enemies don't.
+        const gear = team !== me.team ? '' : sim.bomb.state === 'carried' && sim.bomb.carrier === p.id ? 'bomb' : p.kit && p.alive ? 'kit' : '';
+        el('td', '', p.alive ? gear : 'dead', tr);
         el('td', 'n', String(p.kills), tr);
         el('td', 'n', String(p.deaths), tr);
         el('td', 'n', team === me.team ? `$${p.money}` : '', tr);
@@ -343,11 +374,11 @@ export class Hud {
     for (const { item, el: b } of this.buyItems) {
       const isW = item in WEAPONS;
       const def = isW ? WEAPONS[item as WeaponId] : null;
-      const na = !!def?.team && def.team !== me.team;
+      const na = (!!def?.team && def.team !== me.team) || (item === 'defuser' && me.team !== 'D');
       b.classList.toggle('na', na);
       b.classList.toggle('poor', !na && sim.priceOf(item) > me.money);
       b.disabled = na;
-      if (na) b.title = `${TEAM_NAME[def!.team!]} only`;
+      if (na) b.title = `${TEAM_NAME[def?.team ?? 'D']} only`;
     }
     if (msg !== undefined) this.buyMsg.textContent = msg;
     else if (!sim.canBuy(me)) this.buyMsg.textContent = 'Buying is only possible in your spawn zone during buy time.';
