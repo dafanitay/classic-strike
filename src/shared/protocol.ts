@@ -256,6 +256,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
           reload: c.reload === true,
           slot,
           use: c.use === true,
+          drop: c.drop === true,
         },
       };
     }

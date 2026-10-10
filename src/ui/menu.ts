@@ -20,6 +20,8 @@ export interface MenuHost {
   startSolo(cfg: SoloConfig): void;
   startOnline(net: NetClient, roundsToWin: number): void;
   click(): void;
+  /** One line about the weapon/impact sound bank, for the settings screen. */
+  soundStatus?(): string;
 }
 
 export function inviteLink(code: string): string {
@@ -68,6 +70,7 @@ export class Menus {
     const m = el('div', 'menu', undefined, s);
     el('h1', 'title', 'CLASSIC STRIKE', m);
     el('p', 'subtitle', 'Tactical rounds · bots · old-school', m);
+    el('p', 'build', `build ${typeof __BUILD__ === 'string' ? __BUILD__ : 'dev'}`, m);
     const nav = (label: string, fn: () => void) => button(label, 'menu-btn', () => {
       this.host.click();
       fn();
@@ -269,6 +272,7 @@ export class Menus {
     slider(p, 'Field of view', 75, 115, 1, s.fov, (v) => `${v}°`, (v) => ((s.fov = v), apply()));
     slider(p, 'Master volume', 0, 1, 0.05, s.masterVolume, (v) => `${Math.round(v * 100)}%`, (v) => ((s.masterVolume = v), apply()));
     slider(p, 'Effects volume', 0, 1, 0.05, s.sfxVolume, (v) => `${Math.round(v * 100)}%`, (v) => ((s.sfxVolume = v), apply()));
+    if (this.host.soundStatus) el('p', 'note', this.host.soundStatus(), p);
     segmented(row(p, '3D audio (headphones)'), [{ value: 'yes', label: 'On' }, { value: 'no', label: 'Off' }], s.spatialAudio ? 'yes' : 'no', (v) => ((s.spatialAudio = v === 'yes'), apply()));
     segmented(row(p, 'Graphics quality'), [
       { value: 'low', label: 'Low' },
@@ -327,6 +331,7 @@ export class Menus {
       ['1 / 2 / 3', 'Primary / pistol / knife (the mouse wheel does nothing)'],
       ['B', 'Buy menu (spawn zone, buy time)'],
       ['E (hold)', 'Plant the bomb in a site / defuse it'],
+      ['G', 'Drop the bomb for a teammate'],
       ['Tab (hold)', 'Scoreboard'],
       ['Esc', 'Pause and release the mouse'],
     ];

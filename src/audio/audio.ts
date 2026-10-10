@@ -1,6 +1,6 @@
 import type { WeaponClass, WeaponId } from '../shared/weapons';
 import type { Vec3 } from '../shared/vec';
-import { buildSoundBank, type GunSoundId, type SoundBank } from './soundBank';
+import { buildSoundBank, offlineContextClass, type GunSoundId, type SoundBank } from './soundBank';
 import { PROFILES, admit, attenuation, listenerAxes, type SoundKind } from './spatial';
 
 /**
@@ -30,6 +30,8 @@ export class GameAudio {
   /** Pre-rendered gunshots and impacts (soundBank.ts); null until rendered. */
   private bank: SoundBank | null = null;
   private bankLoading: Promise<void> | null = null;
+  /** Why the sound bank isn't in use, if it failed (shown in Settings). */
+  bankError = '';
   /** Returns true when something solid is between the two points (set by the session). */
   occluder: ((from: Vec3, to: Vec3) => boolean) | null = null;
 
@@ -44,7 +46,10 @@ export class GameAudio {
   unlock(): void {
     if (!this.ctx) {
       try {
-        this.init(new AudioContext());
+        const w = globalThis as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
+        const AC = w.AudioContext ?? w.webkitAudioContext;
+        if (!AC) return;
+        this.init(new AC());
       } catch {
         return; // no audio support: game stays silent
       }
@@ -59,15 +64,25 @@ export class GameAudio {
    * they are ready, the simpler live-synthesised versions play instead.
    */
   loadBank(): Promise<void> {
-    if (!this.ctx || typeof OfflineAudioContext === 'undefined') return Promise.resolve();
+    if (!this.ctx || !offlineContextClass()) return Promise.resolve();
     this.bankLoading ??= buildSoundBank(this.ctx.sampleRate)
       .then((b) => {
         this.bank = b;
       })
-      .catch(() => {
-        /* keep the synthesised fallback */
+      .catch((e: unknown) => {
+        // Keep the simpler synthesised sounds, but say why (Settings, console).
+        this.bankError = e instanceof Error ? e.message : String(e);
+        console.warn('Weapon sound bank unavailable, using basic sounds:', e);
       });
     return this.bankLoading;
+  }
+
+  /** A line for the Settings screen: which weapon sounds are playing. */
+  get bankStatus(): string {
+    if (this.bank) return 'Weapon sounds: enhanced (loaded).';
+    if (this.bankError) return `Weapon sounds: basic — the enhanced set failed to load (${this.bankError}).`;
+    if (!offlineContextClass()) return 'Weapon sounds: basic — this browser cannot render the enhanced set.';
+    return this.bankLoading ? 'Weapon sounds: enhanced set loading…' : 'Weapon sounds: enhanced set loads on your first click.';
   }
 
   /** True once the pre-rendered sounds are in use (for tests). */

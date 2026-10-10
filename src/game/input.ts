@@ -27,6 +27,7 @@ export class Input {
   private mouse2 = false;
   private pendingSlot: WeaponSlot | 0 = 0;
   private pendingReload = false;
+  private pendingDrop = false;
   private readonly target: HTMLElement;
   private readonly listeners: [EventTarget, string, EventListener][] = [];
   private lockRequested = 0;
@@ -124,6 +125,7 @@ export class Input {
       case 'Digit2': case 'Numpad2': this.queueSlot(2); break;
       case 'Digit3': case 'Numpad3': this.queueSlot(3); break;
       case 'KeyR': this.pendingReload = true; break;
+      case 'KeyG': this.pendingDrop = true; break;
       case 'KeyB': this.onAction('buy'); break;
       case 'Backquote': this.onAction('pause'); break;
     }
@@ -182,8 +184,10 @@ export class Input {
       reload: this.pendingReload,
       slot: this.pendingSlot,
       use: this.keys.has('KeyE'),
+      drop: this.pendingDrop,
     };
     this.pendingReload = false;
+    this.pendingDrop = false;
     this.pendingSlot = 0;
     return cmd;
   }

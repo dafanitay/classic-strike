@@ -49,6 +49,7 @@ const menus = new Menus({
     audio.unlock();
     audio.ui('click');
   },
+  soundStatus: () => audio.bankStatus,
 });
 
 function showPause(): void {
