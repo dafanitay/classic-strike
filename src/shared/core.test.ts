@@ -69,6 +69,42 @@ describe('movement', () => {
     expect(c.pos.x).toBeGreaterThanOrEqual(1 + PHYS.halfWidth - 1e-9);
   });
 
+  it('a position rounded a fraction of a millimetre into a wall is not shoved across it', () => {
+    // Network snapshots round positions to 1 mm, which can leave a hull
+    // 0.4 mm inside a wall it was touching. Moving along the wall must slide,
+    // not resolve the overlap sideways out of the far end of the wall.
+    const wall = { min: { x: -4, y: 0, z: 1 }, max: { x: 4, y: 3, z: 3 } };
+    const w = flatWorld([wall]);
+    const pos = { x: 1, y: 0, z: 1 - PHYS.halfWidth + 0.0004 };
+    w.moveHull(pos, PHYS.halfWidth, PHYS.standHeight, { x: -0.1, y: 0, z: 0 });
+    expect(pos.x).toBeCloseTo(0.9, 6);
+    expect(pos.z).toBeLessThanOrEqual(1 - PHYS.halfWidth + 1e-9);
+    const pos2 = { x: 4 + PHYS.halfWidth - 0.0004, y: 0, z: 2 };
+    w.moveHull(pos2, PHYS.halfWidth, PHYS.standHeight, { x: 0, y: 0, z: 0.1 });
+    expect(pos2.z).toBeCloseTo(2.1, 6);
+    // Deeply inside is still pushed out the nearest way.
+    const deep = { x: 3.9, y: 0, z: 2 };
+    w.moveHull(deep, PHYS.halfWidth, PHYS.standHeight, { x: 0.01, y: 0, z: 0 });
+    expect(deep.x).toBeCloseTo(4 + PHYS.halfWidth, 6);
+  });
+
+  it('the landing slowdown ends on the same tick even after 1 mm snapshot rounding', () => {
+    const w = flatWorld();
+    const run = (rounded: boolean) => {
+      const b = makeBody({ x: 0, y: 0, z: 0 });
+      stepMovement(w, b, idle(), PHYS.maxSpeed, TICK_DT);
+      b.landSlow = 0.25;
+      const speeds: number[] = [];
+      for (let i = 0; i < 30; i++) {
+        if (rounded) b.landSlow = Math.round(b.landSlow * 1000) / 1000;
+        stepMovement(w, b, { ...idle(), forward: 1 }, PHYS.maxSpeed, TICK_DT);
+        speeds.push(Math.hypot(b.vel.x, b.vel.z));
+      }
+      return speeds;
+    };
+    expect(run(true)).toEqual(run(false));
+  });
+
   it('walks up a step no taller than the step height, without jumping', () => {
     for (const [h, ok] of [[0.3, true], [PHYS.stepHeight - 0.01, true], [0.6, false]] as const) {
       const step = { min: { x: -2, y: 0, z: -20 }, max: { x: 2, y: h, z: -1.5 } };

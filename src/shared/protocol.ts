@@ -90,7 +90,12 @@ export interface Snapshot {
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export function encodePlayer(p: SimPlayer): PlayerSnap {
+/**
+ * @param exact send position and velocity unrounded. Used for the receiving
+ *   player's own body: client prediction replays from it, and a 1 mm rounding
+ *   can flip which tick a landing happens on (a visible 2–3 cm correction).
+ */
+export function encodePlayer(p: SimPlayer, exact = false): PlayerSnap {
   const w: PlayerSnap['w'] = [];
   for (const slot of [1, 2, 3] as WeaponSlot[]) {
     const ws = p.weapons[slot];
@@ -99,8 +104,8 @@ export function encodePlayer(p: SimPlayer): PlayerSnap {
   const b = p.body;
   return {
     id: p.id, n: p.name, tm: p.team, b: p.isBot ? 1 : 0, a: p.alive ? 1 : 0,
-    p: [r3(b.pos.x), r3(b.pos.y), r3(b.pos.z)],
-    v: [r3(b.vel.x), r3(b.vel.y), r3(b.vel.z)],
+    p: exact ? [b.pos.x, b.pos.y, b.pos.z] : [r3(b.pos.x), r3(b.pos.y), r3(b.pos.z)],
+    v: exact ? [b.vel.x, b.vel.y, b.vel.z] : [r3(b.vel.x), r3(b.vel.y), r3(b.vel.z)],
     g: b.onGround ? 1 : 0, c: b.crouched ? 1 : 0, j: b.jumpHeld ? 1 : 0, ls: r3(b.landSlow),
     yw: r3(p.yaw), pt: r3(p.pitch),
     hp: p.health, ar: p.armor, hm: p.helmet ? 1 : 0, $: p.money, k: p.kills, d: p.deaths,
@@ -109,7 +114,8 @@ export function encodePlayer(p: SimPlayer): PlayerSnap {
   };
 }
 
-export function encodeSnapshot(sim: Simulation, ack: number, events: SimEvent[]): Snapshot {
+/** @param selfId the receiving player, whose own body is sent unrounded. */
+export function encodeSnapshot(sim: Simulation, ack: number, events: SimEvent[], selfId = -1): Snapshot {
   return {
     time: r3(sim.time),
     phase: sim.phase,
@@ -118,7 +124,7 @@ export function encodeSnapshot(sim: Simulation, ack: number, events: SimEvent[])
     roundStart: r3(sim.roundStartTime),
     score: { ...sim.score },
     ack,
-    players: sim.players.map(encodePlayer),
+    players: sim.players.map((p) => encodePlayer(p, p.id === selfId)),
     events,
   };
 }
