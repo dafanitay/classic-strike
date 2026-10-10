@@ -5,11 +5,6 @@ buy phase, economy, learnable recoil, one life per round. All code, the map,
 models, textures and sounds are original (textures and audio are generated
 procedurally at runtime). Not affiliated with Valve or any other publisher.
 
-> This directory is a **self-contained project**. It has its own `package.json`
-> and lockfile and shares nothing with the NOX application in the parent
-> repository. It can be split out into its own repository with
-> `git subtree split --prefix classic-strike`.
-
 ## Run it
 
 ```bash
