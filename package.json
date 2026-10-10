@@ -15,7 +15,8 @@
     "build:server": "esbuild server/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist-server/server.mjs --external:bufferutil --external:utf-8-validate --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
     "start": "node dist-server/server.mjs",
     "e2e:mp": "node tests/e2e/multiplayer.mjs",
-    "e2e:feedback": "node tests/e2e/feedback.mjs"
+    "e2e:feedback": "node tests/e2e/feedback.mjs",
+    "e2e:elevation": "node tests/e2e/elevation.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",

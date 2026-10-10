@@ -144,7 +144,15 @@ export class CollisionWorld {
       if (!(pos.x + halfWidth > b.min.x && pos.x - halfWidth < b.max.x)) continue;
       if (prevX + halfWidth <= b.min.x + TOL) pos.x = b.min.x - halfWidth;
       else if (prevX - halfWidth >= b.max.x - TOL) pos.x = b.max.x + halfWidth;
-      else pos.x = pos.x < (b.min.x + b.max.x) / 2 ? b.min.x - halfWidth : b.max.x + halfWidth;
+      else {
+        // Already inside. If that is only a graze in Z (a position rounded
+        // by the network snapshot sits up to 0.5 mm inside a wall), leave it
+        // to the Z pass instead of shoving the hull out sideways, possibly
+        // across the whole box.
+        const penZ = Math.min(pos.z + halfWidth - b.min.z, b.max.z - (pos.z - halfWidth));
+        if (penZ <= TOL) continue;
+        pos.x = pos.x < (b.min.x + b.max.x) / 2 ? b.min.x - halfWidth : b.max.x + halfWidth;
+      }
       res.hitWall = true;
     }
 
@@ -158,7 +166,12 @@ export class CollisionWorld {
       if (!(pos.z + halfWidth > b.min.z && pos.z - halfWidth < b.max.z)) continue;
       if (prevZ + halfWidth <= b.min.z + TOL) pos.z = b.min.z - halfWidth;
       else if (prevZ - halfWidth >= b.max.z - TOL) pos.z = b.max.z + halfWidth;
-      else pos.z = pos.z < (b.min.z + b.max.z) / 2 ? b.min.z - halfWidth : b.max.z + halfWidth;
+      else {
+        // Same for a graze in X: the next tick's X pass pushes it out.
+        const penX = Math.min(pos.x + halfWidth - b.min.x, b.max.x - (pos.x - halfWidth));
+        if (penX <= TOL) continue;
+        pos.z = pos.z < (b.min.z + b.max.z) / 2 ? b.min.z - halfWidth : b.max.z + halfWidth;
+      }
       res.hitWall = true;
     }
     return res;

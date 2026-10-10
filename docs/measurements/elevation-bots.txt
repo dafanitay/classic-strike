@@ -1,0 +1,10 @@
+Bot use of elevation on Depot (branch overhaul/m2-map), headless 5v5, normal
+difficulty, first to 8 rounds. "High ground" = feet above 0.5 m (A Site
+platform, Short A, B Doors balcony, upper stairs). Measured 2026-10-10.
+
+seed 1: rounds 11 (timeouts 0), kills 74, kills involving high ground 10, bot-time on high ground 12.4%
+seed 2: rounds 10 (timeouts 0), kills 68, kills involving high ground  2, bot-time on high ground 13.0%
+seed 3: rounds  9 (timeouts 0), kills 66, kills involving high ground  1, bot-time on high ground 10.6%
+
+All three matches reached matchEnd. Not measured: whether the layout plays
+well for humans.

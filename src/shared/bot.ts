@@ -140,7 +140,7 @@ export class BotDirector {
         if (dist(p.body.pos, pos) > d.hearDist * loud) continue;
         const b = this.brain(p);
         if (b.targetId !== null) continue;
-        b.lastKnown = { x: pos.x, y: 0, z: pos.z };
+        b.lastKnown = { x: pos.x, y: this.sim.map.surfaceY(pos), z: pos.z };
         b.lastKnownAt = this.sim.time;
       }
     }
@@ -311,7 +311,7 @@ export class BotDirector {
         if (b.mode === 'hunt' && b.lastKnown && dist2D(p.body.pos, b.lastKnown) < 12) {
           // Approaching a known threat: look at it and walk quietly.
           const eye = sim.eyePos(p);
-          const a = anglesFromDir({ x: b.lastKnown.x - eye.x, y: 1.4 - eye.y, z: b.lastKnown.z - eye.z });
+          const a = anglesFromDir({ x: b.lastKnown.x - eye.x, y: b.lastKnown.y + 1.4 - eye.y, z: b.lastKnown.z - eye.z });
           lookYaw = a.yaw;
           lookPitch = a.pitch;
           cmd.walk = this.difficulty !== 'easy';
@@ -482,7 +482,7 @@ export class BotDirector {
       for (let dx = -4; dx <= 4; dx++) {
         if (!sim.map.walkable(here.x + dx, here.z + dz)) continue;
         const c = sim.map.cellCenter(here.x + dx, here.z + dz);
-        const eye = { x: c.x, y: 1.5, z: c.z };
+        const eye = { x: c.x, y: c.y + 1.5, z: c.z };
         if (sim.map.world.lineOfSight(eye, threatEye)) continue;
         const dd = dist2D(c, p.body.pos);
         if (dd < bestD) {

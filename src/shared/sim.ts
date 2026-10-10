@@ -289,7 +289,7 @@ export class Simulation {
     const spots = this.map.def.spawns[p.team];
     const s = spots[((index % spots.length) + spots.length) % spots.length];
     const c = this.map.cellCenter(s.x, s.z);
-    p.body = makeBody({ x: c.x, y: 0.02, z: c.z });
+    p.body = makeBody({ x: c.x, y: c.y + 0.02, z: c.z });
     p.body.onGround = true;
     p.yaw = p.team === 'A' ? -Math.PI / 2 : Math.PI / 2;
     p.pitch = 0;

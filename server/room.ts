@@ -239,7 +239,7 @@ export class Room {
       const events = this.pendingEvents;
       this.pendingEvents = [];
       for (const conn of this.conns.values()) {
-        this.send(conn, { t: 'snap', s: encodeSnapshot(this.sim, conn.ack, events) });
+        this.send(conn, { t: 'snap', s: encodeSnapshot(this.sim, conn.ack, events, conn.playerId) });
       }
     }
     for (const [token, d] of this.departed) if (d.until < this.now) this.departed.delete(token);

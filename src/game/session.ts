@@ -71,6 +71,7 @@ export class GameSession {
   /** Camera-only smoothing of step-ups so climbing stairs doesn't jolt the view. */
   private stepOffset = 0;
   private lastViewY = 0;
+  private lastViewGrounded = false;
   private deathTime = -1;
   private killerId = 0;
   private spectateId = 0;
@@ -656,8 +657,11 @@ export class GameSession {
       }
       this.eyeSmooth += (eyeHeight(me.body) - this.eyeSmooth) * Math.min(1, dt * 14);
       const dy = pos.y - this.lastViewY;
-      if (me.body.onGround && dy > 0.02 && dy < PHYS.stepHeight + 0.05) this.stepOffset -= dy;
+      // Smooth stair steps up and down (ground snapping moves the body in whole steps).
+      // Only while grounded on both frames, so landings aren't smoothed too.
+      if (me.body.onGround && this.lastViewGrounded && Math.abs(dy) > 0.02 && Math.abs(dy) < PHYS.stepHeight + 0.05) this.stepOffset -= dy;
       this.lastViewY = pos.y;
+      this.lastViewGrounded = me.body.onGround;
       this.stepOffset *= Math.exp(-dt * 14);
       cam.position.set(pos.x, pos.y + this.eyeSmooth + this.stepOffset, pos.z);
       cam.rotation.set(this.input.pitch + me.punchPitch * 0.6, this.input.yaw + me.punchYaw * 0.6, 0);

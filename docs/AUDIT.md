@@ -139,7 +139,7 @@ server-side bots — all additive to the current design.
 - Prediction, server and bot tests keep passing; build + browser smoke
   pass.
 
-## Progress on branch `overhaul/m1-gunplay` (local, not pushed)
+## Progress on branch `overhaul/m1-gunplay` (merged in PR #1, deployed 2026-10-10)
 
 | Improvement | Status | Evidence |
 |---|---|---|
@@ -149,3 +149,31 @@ server-side bots — all additive to the current design.
 
 Not measured yet: feel and frame rate on real hardware; nothing on this
 branch has been played by a human or deployed.
+
+## Progress on branch `overhaul/m2-map` (roadmap item 3, second half)
+
+| Change | Evidence |
+|---|---|
+| Map elevation: raised floors (`levels`) and stairs (`stairs`) in the map format; crates stand on raised floors | `src/shared/elevation.test.ts` (surface heights, monotone stairs, invalid layouts rejected) |
+| Depot: raised A Site with three ways up (Long stairs, A Ramp stairs, Catwalk → Short A); B Doors balcony; lower pockets under ledges | screenshots from `tests/e2e/elevation.mjs` |
+| Ground snapping: walking down stairs stays on the ground (no air inaccuracy, no missing footsteps) | every Depot staircase walked up and down with 0 airborne ticks (unit + browser) |
+| Bots: height-aware A* and string pulling; drop down ledges, never path up one | every route between spawns, sites and raised areas walked by a bot-style follower; 5v5 bot matches spend 11–13 % of alive time on high ground, no timeouts (`docs/measurements/elevation-bots.txt`) |
+| Netcode: the receiving player's own body is sent unrounded; landing slowdown rounding-safe; collision no longer shoves a hull across a wall when a rounded position grazes it | prediction error now < 1e-6 m in 17 scenarios incl. every staircase (was up to 6.4 m in one stairs case, 2–3 cm after landings) |
+
+Two of the netcode bugs are older than this branch and affect online play in
+the deployed build (solo is unaffected):
+
+- **Wall touch.** A player pressed against a wall is exactly 0.4064 m from it;
+  the snapshot rounded that to 1 mm, i.e. 0.4 mm *inside* the wall, and on
+  replay the client's collision code resolved the overlap along the wall,
+  moving the player to the wall's end. Reproduced against main's
+  `collision.ts`: a rounded wall-touching position, standing still, ends up
+  5.4 m away at the end of a 20 m wall. Each snapshot corrects it from the
+  server, so online it would show as the view jumping while hugging walls.
+  Not observed by a human; found by the new prediction test.
+- **Landing tick.** A landing within 1 mm of the floor could be predicted a
+  tick late (2–3 cm, blended out visually).
+
+Not measured: how the new layout plays for humans, frame rate on real
+hardware, and play between two separate computers.
+

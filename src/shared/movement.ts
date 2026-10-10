@@ -33,6 +33,8 @@ export const PHYS = {
   maxVelocity: 2000 * U,
 } as const;
 
+const LAND_SLOW_EPS = 1e-3;
+
 export interface MoveInput {
   forward: number; // -1..1
   side: number; // -1..1 (positive = right)
@@ -112,9 +114,11 @@ export function stepMovement(world: CollisionWorld, b: MoveBody, input: MoveInpu
     wishSpeed = maxSpeed * Math.min(wl, 1);
     if (b.crouched) wishSpeed *= PHYS.crouchScale;
     else if (input.walk) wishSpeed *= PHYS.walkScale;
-    if (b.landSlow > 0) wishSpeed *= 0.7;
+    if (b.landSlow > LAND_SLOW_EPS) wishSpeed *= 0.7;
   }
-  b.landSlow = Math.max(0, b.landSlow - dt);
+  // Snapshots round landSlow to 1 ms, so anything under that counts as over;
+  // otherwise client and server can disagree by one tick about when it ends.
+  b.landSlow = b.landSlow - dt > LAND_SLOW_EPS ? b.landSlow - dt : 0;
 
   if (b.onGround) {
     if (input.jump && !b.jumpHeld) {
@@ -165,6 +169,17 @@ export function stepMovement(world: CollisionWorld, b: MoveBody, input: MoveInpu
         b.pos.z = p2.z;
         res = { onGround: true, hitWall: side.hitWall, hitCeiling: false };
       }
+    }
+  }
+  // Stay on the ground going down stairs or small ledges (as Source's
+  // StayOnGround): without this a player walking down steps is airborne for
+  // a few ticks per step, which costs air accuracy and skips footsteps.
+  if (!res.onGround && !wasAirborne && !jumped && b.vel.y <= 0) {
+    const p3 = { ...b.pos };
+    const down = world.moveHull(p3, PHYS.halfWidth, bodyHeight(b), { x: 0, y: -PHYS.stepHeight, z: 0 });
+    if (down.onGround) {
+      b.pos.y = p3.y;
+      res = { ...res, onGround: true };
     }
   }
   b.vel.y -= PHYS.gravity * dt * 0.5;
