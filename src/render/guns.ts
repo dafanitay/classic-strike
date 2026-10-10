@@ -11,8 +11,16 @@ const METAL_LIGHT = 0x45474b;
 const WOOD = 0x6a4524;
 const POLY = 0x3b3a33;
 
+/** First-person finish per colour: metal gets a tight highlight, wood and polymer a dull sheen. */
+function finish(color: number): { specular: number; shininess: number } {
+  if (color === WOOD) return { specular: 0x1a140e, shininess: 12 };
+  if (color === POLY || color === 0x3d4a32 || color === 0x1b1b1b) return { specular: 0x202020, shininess: 18 };
+  return { specular: 0x6a6a6a, shininess: 70 }; // metal, blade
+}
+
 function part(g: THREE.Group, w: number, h: number, d: number, x: number, y: number, z: number, color: number, lit: boolean): THREE.Mesh {
-  const mat = lit ? new THREE.MeshLambertMaterial({ color }) : new THREE.MeshLambertMaterial({ color });
+  // Third-person guns are small on screen: plain Lambert is enough there.
+  const mat = lit ? new THREE.MeshPhongMaterial({ color, ...finish(color) }) : new THREE.MeshLambertMaterial({ color });
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
   m.position.set(x, y, z);
   g.add(m);

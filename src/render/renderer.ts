@@ -16,7 +16,7 @@ export class GameRenderer {
   readonly effects: Effects;
   readonly muzzleLight = new THREE.PointLight(0xffc070, 0, 9, 2);
   readonly bomb = new BombModel();
-  private readonly sun = new THREE.DirectionalLight(0xfff0d6, 2.2);
+  private readonly sun = new THREE.DirectionalLight(0xffe8c4, 3.1);
   private readonly map: MapData;
   private world: WorldMeshes | null = null;
   private quality: Quality;
@@ -28,14 +28,21 @@ export class GameRenderer {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: quality !== 'low', powerPreference: 'high-performance' });
     this.renderer.autoClear = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // Filmic curve: bright sand keeps detail instead of clipping, shade keeps
+    // colour instead of going flat grey.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const w = map.def.cols * map.def.cellSize;
     const d = map.def.rows * map.def.cellSize;
     this.scene.fog = new THREE.Fog(0xd8c8a4, 60, 180);
     this.scene.background = new THREE.Color(0xd8c8a4);
-    this.scene.add(buildSky());
-    this.scene.add(new THREE.HemisphereLight(0xdfe6ef, 0x7a6248, 1.25));
+    // Sun offset from the map centre (see the light below), for the sky glow.
+    this.scene.add(buildSky(new THREE.Vector3(-30, 60, -22)));
+    // Cool sky fill and warm ground bounce; weaker than before so the sun
+    // (and so sun vs. shade) carries the scene.
+    this.scene.add(new THREE.HemisphereLight(0xc9d8ec, 0x8a6a48, 1.05));
     this.sun.position.set(w / 2 - 30, 60, d / 2 - 22);
     this.sun.target.position.set(w / 2, 0, d / 2);
     const cam = this.sun.shadow.camera;
