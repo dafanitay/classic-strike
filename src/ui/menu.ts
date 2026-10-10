@@ -323,7 +323,7 @@ export class Menus {
       ['Shift (hold)', 'Walk — silent footsteps'],
       ['C (hold)', 'Crouch — better accuracy'],
       ['R', 'Reload'],
-      ['1 / 2 / 3, wheel, Q', 'Primary / pistol / knife, cycle, last weapon'],
+      ['1 / 2 / 3', 'Primary / pistol / knife (the mouse wheel does nothing)'],
       ['B', 'Buy menu (spawn zone, buy time)'],
       ['Tab (hold)', 'Scoreboard'],
       ['Esc', 'Pause and release the mouse'],
