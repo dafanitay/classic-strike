@@ -39,20 +39,24 @@ Automated, run on 2026-10-10 in a Linux container:
 
 Milestone 3 additions (2026-10-10):
 
-- `npm test` — 25/25 now, adding:
+- `npm test` — 26/26 now, adding:
   - 7 server integration tests over real WebSockets (loopback): room create/
     join with codes, second player auto-assigned the other team, round 1
     starts; unknown room / full room / wrong protocol version / malformed JSON
     rejected; movement only through commands, acknowledged; client attempts
     to send state are ignored and inputs clamped; a shot judged server-side
     damages the friend and both clients get the hit event; disconnect +
-    reconnect with the rejoin token restores the same player; rematch only
+    reconnect with the rejoin token restores the same player; a rejoin while
+    the old socket still looks open takes the slot over (strangers still
+    get "room full"); rematch only
     accepted after match end and resets the score.
   - client prediction: over 600 ticks of jittery, delayed input the
     predicted position for every command matches the server's to < 2 cm.
   - collision regression: a hull overlapping a wall by < 1 mm is pushed
     back out instead of onto the wall top (found by the prediction test).
-- `node tests/e2e/multiplayer.mjs` — 17/17 pass with two independent
+- `node tests/e2e/multiplayer.mjs` — 17/17 pass (8 consecutive clean runs
+  after making three timing-sensitive checks wait for state instead of
+  sampling once) with two independent
   Chromium sessions against the built production server: server status;
   room code + invite link; joining via the link; both lobbies show both
   players on opposite teams; both capture the mouse; both see the same

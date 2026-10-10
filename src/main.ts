@@ -103,13 +103,12 @@ function startSession(mode: SessionMode): void {
 function quitToMenu(): void {
   session?.dispose();
   session = null;
-  // Invitation links look like ?room=CODE.
-const invited = new URLSearchParams(location.search).get('room');
-if (invited && /^[A-Za-z2-9]{5}$/.test(invited)) menus.friend(invited.toUpperCase());
-else menus.main();
+  menus.main();
 }
 
-// Invitation links look like ?room=CODE.
+// Invitation links look like ?room=CODE. The code is consumed once so that
+// leaving the match later doesn't silently re-join the same room; a page
+// reload still rejoins (the rejoin token lives in sessionStorage).
 const invited = new URLSearchParams(location.search).get('room');
 if (invited && /^[A-Za-z2-9]{5}$/.test(invited)) menus.friend(invited.toUpperCase());
 else menus.main();

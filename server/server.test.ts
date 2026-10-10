@@ -180,6 +180,27 @@ describe('game server', () => {
     b2.close();
   }, 15000);
 
+  it('lets a token take over its slot while the old socket still looks open', async () => {
+    const { a, b, bId } = await pair();
+    const wb = await b.waitFor('welcome');
+    await a.snapWhere((s) => s.round === 1);
+    // Rejoin WITHOUT closing the first socket (fast reload / network switch).
+    const b2 = new TestClient();
+    await b2.open();
+    b2.send({ t: 'join', v: PROTOCOL_VERSION, name: 'Bob', room: wb.room, token: wb.token });
+    const w2 = await b2.waitFor('welcome');
+    expect(w2.you).toBe(bId);
+    await a.waitFor('notice', (m) => m.text.includes('reconnected'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(b.ws.readyState).toBe(WebSocket.CLOSED);
+    // And a stranger still can't get in.
+    const c = new TestClient();
+    await c.open();
+    c.send({ t: 'join', v: PROTOCOL_VERSION, name: 'Eve', room: wb.room });
+    expect((await c.waitFor('error')).code).toBe('room_full');
+    for (const x of [a, b2, c]) x.close();
+  }, 15000);
+
   it('rematch is only accepted after the match has ended', async () => {
     const { a, b, room } = await pair();
     await a.snapWhere((s) => s.round === 1);

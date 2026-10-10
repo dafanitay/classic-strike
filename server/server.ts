@@ -112,6 +112,7 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
           if ('error' in r) return send({ t: 'error', code: 'room_full', text: 'That room already has two players.' });
           room = target;
           conn = r;
+          log(`room ${target.code}: player ${r.playerId} joined (${target.humanCount} connected)`);
         }
         return;
       }
@@ -122,7 +123,10 @@ export function startServer(opts: ServerOptions): Promise<RunningServer> {
     ws.on('close', () => {
       clearInterval(refill);
       clearInterval(heartbeat);
-      if (room && conn) room.leave(conn);
+      if (room && conn) {
+        room.leave(conn);
+        log(`room ${room.code}: player ${conn.playerId} socket closed (${room.humanCount} connected)`);
+      }
     });
     ws.on('error', () => ws.terminate());
   }

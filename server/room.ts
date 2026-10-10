@@ -99,6 +99,16 @@ export class Room {
       p.current = p.weapons[1] ? 1 : 2;
       return this.attach(ws, p, token!, `${p.name} reconnected`);
     }
+    // Same token while the old socket still looks open (fast reload, network
+    // switch before the server noticed the drop): the new connection takes
+    // over the slot and the stale socket is closed.
+    const stale = token ? [...this.conns.values()].find((c) => c.token === token) : undefined;
+    if (stale) {
+      const p = this.sim.getPlayer(stale.playerId);
+      this.conns.delete(stale.playerId); // its later 'close' is then ignored by leave()
+      stale.ws.terminate();
+      if (p) return this.attach(ws, p, token!, `${p.name} reconnected`);
+    }
     if (this.conns.size >= MAX_HUMANS_PER_ROOM) return { error: 'room_full' };
     // Second player goes to the other team so a match can start.
     const taken = [...this.conns.values()].map((c) => this.sim.getPlayer(c.playerId)?.team);
