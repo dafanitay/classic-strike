@@ -390,6 +390,8 @@ export class GameSession {
     const w = me.weapons[me.current];
     const pressed = cmd.fire && !this.predFireHeld;
     this.predFireHeld = cmd.fire;
+    // Grenades leave the hand when the server says so; no predicted shot.
+    if (def.cls === 'grenade') return;
     const canShoot = sim.phase === 'live' || sim.phase === 'warmup';
     if (!canShoot || sim.time < me.switchEnd || me.reloadEnd > 0 || sim.time < this.predNextFire) return;
     if (def.cls === 'melee') {

@@ -669,7 +669,9 @@ export class BotDirector {
     const prim = p.weapons[1];
     const sec = p.weapons[2];
     const want: 1 | 2 | 3 = prim && prim.mag + prim.reserve > 0 ? 1 : sec && sec.mag + sec.reserve > 0 ? 2 : 3;
-    if (b.throwPlan && (now > b.throwPlan.until || p.nades[b.throwPlan.type] <= 0 || sim.phase !== 'live')) b.throwPlan = null;
+    // A throw is abandoned once there is someone to shoot: with a grenade in
+    // hand the bot would otherwise stand in the fight unable to fire back.
+    if (b.throwPlan && (now > b.throwPlan.until || p.nades[b.throwPlan.type] <= 0 || sim.phase !== 'live' || b.targetId !== null)) b.throwPlan = null;
     if (p.current !== want && !sim.isReloading(p) && !b.throwPlan) cmd.slot = want;
 
     if (now >= b.nextPerceive) {
@@ -978,6 +980,7 @@ export class BotDirector {
     const w = p.weapons[p.current];
     const needReload = !!w && def.magSize > 0 && w.mag === 0;
     let moveDir: Vec3 | null = null;
+    let strafeMove: Vec3 | null = null;
     if (b.state !== 'retreat') b.state = 'combat';
 
     // Outnumbered, hurt, or reloading in the open: fall back to cover.
@@ -1013,7 +1016,7 @@ export class BotDirector {
       } else if (d.strafe && !(d.stopToShoot && range > 12)) {
         if (now >= b.strafeUntil) {
           b.strafeDir = sim.random() < 0.5 ? -1 : 1;
-          b.strafeUntil = now + 0.35 + sim.random() * 0.6;
+          b.strafeUntil = now + 0.5 + sim.random() * 0.7;
         }
         const side = { x: Math.cos(ang.yaw) * b.strafeDir, y: 0, z: -Math.sin(ang.yaw) * b.strafeDir };
         // Don't strafe into a wall: flip if that side is blocked.
@@ -1024,6 +1027,7 @@ export class BotDirector {
           side.z = -side.z;
         }
         moveDir = side;
+        strafeMove = side;
       }
     }
 
@@ -1059,7 +1063,9 @@ export class BotDirector {
       }
     }
     if (d.stopToShoot && cmd.fire && range > 12 && b.state !== 'retreat') moveDir = null;
-    cmd.walk = false;
+    // Normal bots dodge at walking pace; only hard bots strafe at a full run.
+    // Full-speed dodging made them too hard to hit (playtest feedback).
+    cmd.walk = this.difficulty === 'normal' && moveDir !== null && moveDir === strafeMove;
     cmd.crouch = this.difficulty !== 'easy' && cmd.fire && range > 25 && def.cls !== 'sniper' && !moveDir;
     return { moveDir, lookYaw, lookPitch };
   }

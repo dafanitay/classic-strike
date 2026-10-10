@@ -196,7 +196,7 @@ No secrets are required; nothing secret is shipped to the browser.
   | 1 Pistols | P9 Compact (default) · M45 Tactical · K-57 Duty (D) · HC-50 Hand Cannon |
   | 2 Shotguns | Pump-12 · Auto-12 (semi-auto) |
   | 3 SMGs | TP-9 (D) · R-10 Rattler (A) · MK-5 · U-45 · P-50 Hornet (50 rounds) |
-  | 4 Rifles | GR-3 Galeo (A) · FM-2 Falcon (D) · AR-7 (A) · K4 (D) · SG-5 scoped (A) · AU-3 scoped (D) · Kestrel light sniper · Longbow .338 · RP-3 semi-auto sniper (A) · VG-5 semi-auto sniper (D) |
+  | 4 Rifles | GR-3 Galeo (A) · FM-2 Falcon (D) · AR-7 (A, $2700) · K4 (D, $2700) · SG-5 scoped (A) · AU-3 scoped (D) · Kestrel light sniper · Longbow .338 · RP-3 semi-auto sniper (A) · VG-5 semi-auto sniper (D) |
   | 5 Machine gun | MG-9 Bulldog (100 rounds) |
   | 6 Equipment | Kevlar · Kevlar + helmet · primary / secondary ammo · defuse kit (D) |
 

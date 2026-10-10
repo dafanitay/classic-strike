@@ -77,6 +77,7 @@ export interface PlayerSnap {
   ac: 0 | 1 | 2; // action: none / planting / defusing
   ae: number; // action end time
   ul: 0 | 1; // use latch
+  dd: number; // damage dealt this match
   nd: [number, number, number]; // grenades carried: he, flash, smoke
   ns: number; // selected grenade (index into NADE_TYPES)
   bl: [number, number, number]; // flashed: at, fully blind until, fading until
@@ -138,7 +139,7 @@ export function encodePlayer(p: SimPlayer, exact = false): PlayerSnap {
     w, cu: p.current, nf: r3(p.nextFire), rl: r3(p.reloadEnd), se: r3(p.switchEnd), sc: p.scope,
     pp: r3(p.punchPitch), py: r3(p.punchYaw), sa: r3(p.spreadAccum), lh: r2(p.lastHurt),
     kt: p.kit ? 1 : 0, ac: p.action === 'plant' ? 1 : p.action === 'defuse' ? 2 : 0, ae: r3(p.actionEnd), ul: p.useLatch ? 1 : 0,
-    nd: [p.nades.he, p.nades.flash, p.nades.smoke], ns: NADE_TYPES.indexOf(p.nadeSel),
+    dd: p.damageDealt, nd: [p.nades.he, p.nades.flash, p.nades.smoke], ns: NADE_TYPES.indexOf(p.nadeSel),
     bl: [r2(p.blindAt), r3(p.blindFull), r3(p.blindEnd)],
   };
 }
@@ -214,6 +215,7 @@ export function applyPlayer(p: SimPlayer, s: PlayerSnap, includeBody = true): vo
   p.action = s.ac === 1 ? 'plant' : s.ac === 2 ? 'defuse' : null;
   p.actionEnd = s.ae;
   p.useLatch = !!s.ul;
+  if (s.dd !== undefined) p.damageDealt = s.dd;
   if (s.nd) p.nades = { he: s.nd[0], flash: s.nd[1], smoke: s.nd[2] };
   if (s.ns !== undefined) p.nadeSel = NADE_TYPES[s.ns] ?? 'he';
   if (s.bl) [p.blindAt, p.blindFull, p.blindEnd] = s.bl;
@@ -264,7 +266,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
       const c = m.cmd as Record<string, unknown> | undefined;
       if (!isNum(m.seq) || !c || typeof c !== 'object') return null;
       if (!isNum(c.yaw) || !isNum(c.pitch) || !isNum(c.forward) || !isNum(c.side)) return null;
-      const slot = c.slot === 1 || c.slot === 2 || c.slot === 3 ? c.slot : 0;
+      const slot = c.slot === 1 || c.slot === 2 || c.slot === 3 || c.slot === 4 ? c.slot : 0;
       return {
         t: 'cmd',
         seq: Math.floor(m.seq),

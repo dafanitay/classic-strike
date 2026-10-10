@@ -48,6 +48,8 @@ interface Departed {
   armor: number;
   helmet: boolean;
   weapons: Partial<Record<WeaponSlot, WeaponState>>;
+  nades: SimPlayer['nades'];
+  nadeSel: SimPlayer['nadeSel'];
   until: number;
 }
 
@@ -96,6 +98,9 @@ export class Room {
       const p = this.sim.addPlayer(back.name, back.team, false, back.playerId);
       Object.assign(p, { money: back.money, kills: back.kills, deaths: back.deaths, armor: back.armor, helmet: back.helmet });
       p.weapons = back.weapons;
+      p.nades = { ...back.nades };
+      p.nadeSel = back.nadeSel;
+      this.sim.syncNadeSlot(p);
       p.current = p.weapons[1] ? 1 : 2;
       return this.attach(ws, p, token!, `${p.name} reconnected`);
     }
@@ -135,7 +140,7 @@ export class Room {
     if (p) {
       this.departed.set(conn.token, {
         playerId: p.id, name: p.name, team: p.team, money: p.money, kills: p.kills, deaths: p.deaths,
-        armor: p.armor, helmet: p.helmet, weapons: p.weapons, until: this.now + RECONNECT_GRACE_S,
+        armor: p.armor, helmet: p.helmet, weapons: p.weapons, nades: { ...p.nades }, nadeSel: p.nadeSel, until: this.now + RECONNECT_GRACE_S,
       });
       this.sim.removePlayer(p.id);
       this.broadcast({ t: 'notice', text: `${p.name} disconnected — they can rejoin with the same link` });
