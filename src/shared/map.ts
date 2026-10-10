@@ -165,6 +165,15 @@ export function buildMap(def: MapDef): MapData {
     }
   });
   for (const l of def.levels ?? []) if (l.height < 0) throw new Error('Levels cannot go below the ground floor');
+  // A stair cell's centre is under higher steps: a body spawned there would
+  // start inside a step box.
+  for (const team of ['A', 'D'] as const) {
+    for (const sp of def.spawns[team]) {
+      if (grid[sp.z * cols + sp.x] !== CELL_FLOOR || stairIdx[sp.z * cols + sp.x] >= 0) {
+        throw new Error(`Spawn ${team} at ${sp.x},${sp.z} must be on open, flat floor`);
+      }
+    }
+  }
 
   const boxes: BuiltBox[] = [];
   // Floor slab under the whole map.

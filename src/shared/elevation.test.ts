@@ -78,6 +78,8 @@ describe('elevation: map data', () => {
     expect(() => buildMap(bad)).toThrow(/open floor/);
     const crateOnStairs: MapDef = { ...DEPOT, crates: [...DEPOT.crates, { x: 22, z: 9 }] };
     expect(() => buildMap(crateOnStairs)).toThrow(/stairs/i);
+    const spawnOnStairs: MapDef = { ...DEPOT, spawns: { ...DEPOT.spawns, D: [{ x: 32, z: 20 }] } };
+    expect(() => buildMap(spawnOnStairs)).toThrow(/Spawn D/);
   });
 });
 
