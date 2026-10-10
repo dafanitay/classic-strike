@@ -1,0 +1,74 @@
+# Deploys CLASSIC STRIKE to Fly.io, then checks the public URL.
+# Runs ONLY when started by hand (Actions tab -> deploy -> Run workflow).
+#
+# Needs, in THIS repository only (Settings -> Secrets and variables -> Actions):
+#   secret   FLY_API_TOKEN  an app-scoped deploy token:
+#                           fly tokens create deploy --app <your-app> --expiry 720h
+#   variable FLY_APP        the Fly app name, e.g. classic-strike-itay
+name: deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ vars.FLY_APP }}.fly.dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy (remote builder, single machine)
+        run: |
+          test -n "$FLY_APP" || { echo "Set the FLY_APP repository variable"; exit 1; }
+          flyctl deploy --remote-only --app "$FLY_APP" --ha=false
+          # Rooms live in memory: exactly one machine.
+          flyctl scale count 1 --app "$FLY_APP" --yes
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP: ${{ vars.FLY_APP }}
+
+  verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Wait for the app to answer
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS "https://${{ vars.FLY_APP }}.fly.dev/healthz" && exit 0
+            sleep 5
+          done
+          exit 1
+      - name: Public URL checks (solo + two browsers online)
+        run: mkdir -p test-results && node tests/e2e/public.mjs "https://${{ vars.FLY_APP }}.fly.dev" test-results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-check-screenshots
+          path: test-results/
