@@ -5,6 +5,11 @@ import type { WeaponSlot } from '../shared/weapons';
  * Keyboard + mouse input. Mouse look only applies while the pointer is
  * locked to the game canvas. Discrete actions (weapon slot, reload, menus)
  * are queued so a quick tap between two simulation ticks is never lost.
+ *
+ * Weapons are selected only with the keys 1 / 2 / 3 (top row or numpad).
+ * The mouse wheel deliberately does nothing: touch-surface mice (e.g. the
+ * Apple Magic Mouse) send wheel events from any finger movement, which used
+ * to switch weapons by accident.
  */
 export class Input {
   yaw = 0;
@@ -22,12 +27,11 @@ export class Input {
   private mouse2 = false;
   private pendingSlot: WeaponSlot | 0 = 0;
   private pendingReload = false;
-  private lastSlot: WeaponSlot = 1;
   private readonly target: HTMLElement;
   private readonly listeners: [EventTarget, string, EventListener][] = [];
   private lockRequested = 0;
 
-  onAction: (action: 'scoreboard-on' | 'scoreboard-off' | 'buy' | 'pause' | 'weapon-next' | 'weapon-prev') => void = () => {};
+  onAction: (action: 'scoreboard-on' | 'scoreboard-off' | 'buy' | 'pause') => void = () => {};
   onLockChange: (locked: boolean) => void = () => {};
   onLockError: () => void = () => {};
 
@@ -38,7 +42,6 @@ export class Input {
     this.on(document, 'mousemove', (e) => this.mouseMove(e as MouseEvent));
     this.on(document, 'mousedown', (e) => this.mouseDown(e as MouseEvent));
     this.on(document, 'mouseup', (e) => this.mouseUp(e as MouseEvent));
-    this.on(document, 'wheel', (e) => this.wheel(e as WheelEvent));
     this.on(document, 'contextmenu', (e) => {
       if (this.locked) e.preventDefault();
     });
@@ -96,7 +99,7 @@ export class Input {
   }
 
   private keyDown(e: KeyboardEvent): void {
-    if (!this.enabled) return;
+    if (!this.enabled || isTextEntry(e.target)) return;
     const k = e.code;
     if (k === 'Tab') {
       e.preventDefault();
@@ -117,10 +120,9 @@ export class Input {
     if (e.repeat) return;
     this.keys.add(k);
     switch (k) {
-      case 'Digit1': this.queueSlot(1); break;
-      case 'Digit2': this.queueSlot(2); break;
-      case 'Digit3': this.queueSlot(3); break;
-      case 'KeyQ': this.queueSlot(this.lastSlot); break;
+      case 'Digit1': case 'Numpad1': this.queueSlot(1); break;
+      case 'Digit2': case 'Numpad2': this.queueSlot(2); break;
+      case 'Digit3': case 'Numpad3': this.queueSlot(3); break;
       case 'KeyR': this.pendingReload = true; break;
       case 'KeyB': this.onAction('buy'); break;
       case 'Backquote': this.onAction('pause'); break;
@@ -137,11 +139,6 @@ export class Input {
 
   private queueSlot(s: WeaponSlot): void {
     this.pendingSlot = s;
-  }
-
-  /** The session tells us which slot is active so Q can toggle back. */
-  noteSlotChanged(prev: WeaponSlot): void {
-    this.lastSlot = prev;
   }
 
   private mouseMove(e: MouseEvent): void {
@@ -162,11 +159,6 @@ export class Input {
   private mouseUp(e: MouseEvent): void {
     if (e.button === 0) this.mouse0 = false;
     if (e.button === 2) this.mouse2 = false;
-  }
-
-  private wheel(e: WheelEvent): void {
-    if (!this.locked || !this.enabled) return;
-    this.onAction(e.deltaY > 0 ? 'weapon-next' : 'weapon-prev');
   }
 
   queueSlotExternal(s: WeaponSlot): void {
@@ -206,4 +198,12 @@ export class Input {
     if (button === 0) this.mouse0 = down;
     else this.mouse2 = down;
   }
+}
+
+/** Keys typed into a text field must never drive the game. */
+function isTextEntry(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  if (t.isContentEditable) return true;
+  if (t instanceof HTMLTextAreaElement || t instanceof HTMLSelectElement) return true;
+  return t instanceof HTMLInputElement && !['range', 'checkbox', 'radio', 'button', 'submit'].includes(t.type);
 }

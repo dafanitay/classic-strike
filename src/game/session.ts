@@ -8,7 +8,7 @@ import { buildMap, type MapDef, type Team } from '../shared/map';
 import { PHYS, eyeHeight } from '../shared/movement';
 import { BOMB, Simulation, TEAM_NAME, TICK_DT, emptyCmd, type BuyItem, type SimEvent, type SimPlayer } from '../shared/sim';
 import { angleDiff, lerp, type Vec3 } from '../shared/vec';
-import { WEAPONS, type WeaponSlot } from '../shared/weapons';
+import { WEAPONS } from '../shared/weapons';
 import { spreadToPixels } from '../ui/crosshair';
 import { Hud } from '../ui/hud';
 import type { NetClient, NetStatus } from '../net/client';
@@ -249,7 +249,7 @@ export class GameSession {
     this.lastFrame = performance.now();
   }
 
-  private onAction(a: 'scoreboard-on' | 'scoreboard-off' | 'buy' | 'pause' | 'weapon-next' | 'weapon-prev'): void {
+  private onAction(a: 'scoreboard-on' | 'scoreboard-off' | 'buy' | 'pause'): void {
     switch (a) {
       case 'scoreboard-on':
         if (!this.paused) this.hud.setScoreboard(true, this.sim, this.me);
@@ -264,15 +264,6 @@ export class GameSession {
       case 'pause':
         if (this.hud.buyOpen) this.toggleBuy(false);
         break;
-      case 'weapon-next':
-      case 'weapon-prev': {
-        const order: WeaponSlot[] = [1, 2, 3];
-        const owned = order.filter((s) => this.me.weapons[s]);
-        const i = owned.indexOf(this.me.current);
-        const n = owned[(i + (a === 'weapon-next' ? 1 : owned.length - 1)) % owned.length];
-        if (n) this.input.queueSlotExternal(n);
-        break;
-      }
     }
   }
 
@@ -345,7 +336,6 @@ export class GameSession {
     const playing = this.input.locked && !this.hud.buyOpen;
     const cmd = playing ? this.input.sample() : { ...emptyCmd(this.input.yaw, this.input.pitch) };
     if (!playing) this.input.sample(); // drain queued actions
-    if (cmd.slot && cmd.slot !== this.me.current && this.me.weapons[cmd.slot]) this.input.noteSlotChanged(this.me.current);
     if (this.net && this.mirror) {
       this.stepOnline(cmd);
       return;
