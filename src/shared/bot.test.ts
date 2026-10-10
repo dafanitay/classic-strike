@@ -94,9 +94,11 @@ describe('bots', () => {
       }
       expect(sim.phase).toBe('matchEnd');
     }
-    expect(count.planted ?? 0).toBeGreaterThanOrEqual(2);
+    // Three matches, so the plant and pickup floors are three times the
+    // single-match ones they replace (these seeds give 11 plants, 10 pickups).
+    expect(count.planted ?? 0).toBeGreaterThanOrEqual(6);
     expect(count.defused ?? 0).toBeGreaterThanOrEqual(1);
-    expect(count.bombPickup ?? 0).toBeGreaterThanOrEqual(1);
+    expect(count.bombPickup ?? 0).toBeGreaterThanOrEqual(3);
   }, 120_000);
 
   it('a bot fetches a bomb dropped right against a wall (the path ends short of it there)', () => {

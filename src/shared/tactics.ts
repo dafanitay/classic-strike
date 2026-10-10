@@ -107,23 +107,24 @@ function build(map: MapData): TacticalMap {
     const enemyZone = padRect(map.def.buyZones[enemy], 1);
     for (let i = 0; i < cols * rows; i++) if (fromSpawn[enemy][i] < 14) cost[i] += 8;
     const nearEnds = (i: number) => fromSpawn[team][i] < 10 || map.inRect(center(i), padRect(map.def.bombsites[s], 2));
+    const toRoute = (cells: number[]): Route => ({
+      cells,
+      waypoints: nav.smoothPoints(spawn[team], cells.map(center)),
+      areas: dedupe(cells.map((i) => map.areaNameAt(center(i))).filter(Boolean)),
+      length: cells.length * cs,
+    });
+    // Kept only for a map where every way to the site passes the enemy spawn.
+    let fallback: number[] | null = null;
     for (let k = 0; k < 4 && out.length < 3; k++) {
       const cells = nav.findCells(spawn[team], site[s], cost);
       if (!cells) break;
+      fallback ??= cells;
       // How much of this route runs through corridors earlier routes used?
       const middle = cells.filter((i) => !nearEnds(i));
       const shared = middle.filter((i) => used[i]).length;
       const fresh = middle.length ? shared / middle.length < 0.45 : out.length === 0;
       const throughSpawn = cells.some((i) => map.inRect(center(i), enemyZone));
-      if (fresh && !throughSpawn) {
-        const pts = cells.map(center);
-        out.push({
-          cells,
-          waypoints: nav.smoothPoints(spawn[team], pts),
-          areas: dedupe(cells.map((i) => map.areaNameAt(center(i))).filter(Boolean)),
-          length: cells.length * cs,
-        });
-      }
+      if (fresh && !throughSpawn) out.push(toRoute(cells));
       // Discourage this corridor (and its immediate surroundings) next time.
       for (const i of cells) {
         if (nearEnds(i)) continue;
@@ -139,6 +140,7 @@ function build(map: MapData): TacticalMap {
         }
       }
     }
+    if (!out.length && fallback) out.push(toRoute(fallback));
     // Shortest first; drop routes absurdly longer than the shortest.
     out.sort((a, b) => a.length - b.length);
     const best = out[0]?.length ?? 0;

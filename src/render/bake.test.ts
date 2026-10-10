@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { buildMap } from '../shared/map';
 import { DEPOT } from '../shared/maps/depot';
-import { makeBaker } from './bake';
+import { SKY_FLOOR, makeBaker } from './bake';
 
 const map = buildMap(DEPOT);
 const baker = makeBaker(map);
@@ -52,6 +52,19 @@ describe('baked lighting', () => {
       expect(col.getX(i)).toBeGreaterThanOrEqual(0.2);
       expect(col.getX(i)).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('with shadow maps on, the bake darkens a roofed tunnel less (the shadow already does)', () => {
+    const shadowed = makeBaker(map, SKY_FLOOR.shadows);
+    const p = floorAt(12, 25);
+    expect(shadowed.light(p, UP)).toBeGreaterThan(baker.light(p, UP) + 0.1);
+    expect(shadowed.light(floorAt(31, 5), UP)).toBeGreaterThan(0.9);
+  });
+
+  it('reuses one baker per map and setting (no re-trace on a quality switch)', () => {
+    expect(makeBaker(map)).toBe(baker);
+    expect(makeBaker(map, SKY_FLOOR.shadows)).toBe(makeBaker(map, SKY_FLOOR.shadows));
+    expect(makeBaker(map, SKY_FLOOR.shadows)).not.toBe(baker);
   });
 
   it('every walkable floor cell gets a sensible value (no black holes)', () => {

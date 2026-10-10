@@ -44,7 +44,7 @@ export class ViewModel {
     const glove = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.07), new THREE.MeshLambertMaterial({ color: 0x2a2620 }));
     glove.position.set(0.0, -0.045, 0.035);
     this.holder.add(glove);
-    this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, color: 0xffd28a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+    this.flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, color: 0xffd28a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
     this.flash.visible = false;
     this.flash.scale.setScalar(0.18);
   }

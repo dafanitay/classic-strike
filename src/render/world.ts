@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BuiltBox, FloorKind, MapData } from '../shared/map';
-import { makeBaker } from './bake';
+import { SKY_FLOOR, makeBaker } from './bake';
 import { labelTexture, surface } from './textures';
 
 /**
@@ -78,7 +78,7 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   const fine = quality === 'low' ? 2 : 1;
   const disposables: { dispose(): void }[] = [];
   const cs = map.def.cellSize;
-  const baker = makeBaker(map);
+  const baker = makeBaker(map, shadows ? SKY_FLOOR.shadows : SKY_FLOOR.noShadows);
 
   const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, cast: boolean, receive: boolean, baked = true) => {
     if (!geos.length) return;
@@ -125,9 +125,15 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   const wallTex = surface('wall').worldSize;
   // Heights where the light changes along a vertical face: just above each
   // floor level (contact shadow) and at each roof's underside.
-  const roofYs = map.def.roofs.flatMap((r) => [r.height - 0.08, r.height + 0.03]);
+  const roofs = map.boxes.filter((b) => b.kind === 'roof');
   const floorYs = [0, ...(map.def.levels ?? []).map((l) => l.height)];
-  const rowsFor = (b: BuiltBox) => [...floorYs.filter((y) => y >= b.min.y - 0.01).map((y) => y + 0.9), ...roofYs];
+  // Roof rows only on walls a roof touches (within 0.1 m horizontally).
+  const touches = (b: BuiltBox, r: BuiltBox) =>
+    b.min.x <= r.max.x + 0.1 && b.max.x >= r.min.x - 0.1 && b.min.z <= r.max.z + 0.1 && b.max.z >= r.min.z - 0.1;
+  const rowsFor = (b: BuiltBox) => [
+    ...floorYs.filter((y) => y >= b.min.y - 0.01).map((y) => y + 0.9),
+    ...roofs.filter((r) => touches(b, r)).flatMap((r) => [r.min.y - 0.08, r.min.y + 0.03]),
+  ];
   for (const b of map.boxes as BuiltBox[]) {
     if (b.kind === 'wall') wallGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz', 'py'], 2 * fine, rowsFor(b)));
     else if (b.kind === 'crate') crateGeos.push(boxGeometry(b, surface('crate').worldSize, undefined, 0.5 * fine, [b.min.y + 0.5]));
@@ -162,7 +168,8 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
 
   // ---- landmarks: painted bombsite letters + direction signs
   const decal = (tex: THREE.Texture, size: number, pos: THREE.Vector3, rotX: number, rotY = 0) => {
-    const m = new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    // Painted colours stay as painted (no tone mapping), like the HUD.
+    const m = new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, toneMapped: false });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), m);
     mesh.position.copy(pos);
     mesh.rotation.set(rotX, rotY, 0, 'YXZ');

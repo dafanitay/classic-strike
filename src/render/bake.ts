@@ -19,8 +19,13 @@ import type { Vec3 } from '../shared/vec';
  */
 
 const RAY_LEN = 14;
-/** Brightness of a surface that sees no sky at all (relative to open sky). */
-const SKY_FLOOR = 0.55;
+/**
+ * Brightness of a surface that sees no sky at all (relative to open sky).
+ * With shadow maps on, the sun is already blocked there, so the bake only
+ * has to take away part of the ambient light; without them (low quality)
+ * the bake is the only thing that darkens a roofed tunnel.
+ */
+export const SKY_FLOOR = { shadows: 0.75, noShadows: 0.55 } as const;
 
 /** Fixed, roughly cosine-weighted directions on the +Y hemisphere. */
 const HEMI: Vec3[] = (() => {
@@ -52,7 +57,23 @@ export interface Baker {
   apply(geo: THREE.BufferGeometry): void;
 }
 
-export function makeBaker(map: MapData): Baker {
+const bakers = new WeakMap<MapData, Map<number, Baker>>();
+
+/**
+ * One baker per map and sky floor, so switching quality reuses the light
+ * already computed instead of re-tracing every vertex (about 300 ms).
+ */
+export function makeBaker(map: MapData, skyFloor: number = SKY_FLOOR.noShadows): Baker {
+  let perMap = bakers.get(map);
+  if (!perMap) bakers.set(map, (perMap = new Map()));
+  const hit = perMap.get(skyFloor);
+  if (hit) return hit;
+  const baker = createBaker(map, skyFloor);
+  perMap.set(skyFloor, baker);
+  return baker;
+}
+
+function createBaker(map: MapData, skyFloor: number): Baker {
   const cache = new Map<string, number>();
   const occluders = map.boxes.filter((b) => b.kind === 'wall' || b.kind === 'crate' || b.kind === 'platform');
 
@@ -101,14 +122,14 @@ export function makeBaker(map: MapData): Baker {
     // Faces looking down (roof undersides) only ever get light bounced off
     // the ground; give them a dim constant instead of black.
     if (n.y < -0.5) {
-      cache.set(key, 0.55);
-      return 0.55;
+      cache.set(key, skyFloor);
+      return skyFloor;
     }
     // A vertical face with nothing in front of it still loses the lower half
     // of its hemisphere to the ground, so it is measured against that.
     const expected = Math.abs(n.y) > 0.5 ? 1 : 0.5;
     const s = Math.min(1, (sky(p, n) / expected) * 1.15);
-    const v = (SKY_FLOOR + (1 - SKY_FLOOR) * s) * contact(p, n);
+    const v = (skyFloor + (1 - skyFloor) * s) * contact(p, n);
     cache.set(key, v);
     return v;
   };

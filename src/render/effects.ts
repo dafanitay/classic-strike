@@ -49,7 +49,7 @@ export class Effects {
       this.puffs.push({ s, life: 0, max: 1, grow: 1, vy: 0 });
     }
     for (let i = 0; i < 12; i++) {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, color: 0xffd28a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTex, color: 0xffd28a, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false }));
       s.visible = false;
       s.scale.setScalar(0.4);
       this.group.add(s);
