@@ -39,7 +39,7 @@ describe('arsenal: completeness', () => {
 
   it('every gun has a sound recipe, a model with a muzzle, and a recoil pattern', () => {
     for (const id of guns) {
-      expect(GUN_RECIPES[id as Exclude<WeaponId, 'knife'>], id).toBeTruthy();
+      expect(GUN_RECIPES[id as keyof typeof GUN_RECIPES], id).toBeTruthy();
       const g = gunModel(id, WEAPONS[id].cls, true);
       expect(g.getObjectByName('muzzle'), id).toBeTruthy();
       expect(WEAPONS[id].recoilPattern.length, id).toBeGreaterThan(1);

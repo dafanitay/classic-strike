@@ -332,6 +332,7 @@ export class Menus {
       ['B', 'Buy menu (spawn zone, buy time)'],
       ['E (hold)', 'Plant the bomb in a site / defuse it'],
       ['G', 'Drop the bomb for a teammate'],
+      ['4', 'Grenades (press again for the next kind); left click throws, right click lobs'],
       ['Tab (hold)', 'Scoreboard'],
       ['Esc', 'Pause and release the mouse'],
     ];

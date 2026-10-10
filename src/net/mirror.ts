@@ -1,5 +1,5 @@
 import { stepMovement } from '../shared/movement';
-import { applyPlayer, decodeBomb, type PlayerSnap, type Snapshot } from '../shared/protocol';
+import { applyPlayer, decodeBomb, applyNades, type PlayerSnap, type Snapshot } from '../shared/protocol';
 import { TICK_DT, type PlayerCmd, type SimPlayer, type Simulation } from '../shared/sim';
 import { angleDiff, lerp, type Vec3 } from '../shared/vec';
 
@@ -81,6 +81,7 @@ export class NetMirror {
     sim.roundStartTime = s.roundStart;
     sim.score = { ...s.score };
     sim.bomb = decodeBomb(s.bomb);
+    applyNades(sim, s);
 
     const added: number[] = [];
     const removed: number[] = [];

@@ -3,7 +3,7 @@ import { NavGrid } from './nav';
 import { emptyCmd, type BombSite, type PlayerCmd, type SimEvent, type SimPlayer, type Simulation } from './sim';
 import { chooseSpot, tacticalMap, type Route, type Spot, type TacticalMap } from './tactics';
 import { angleDiff, anglesFromDir, clamp, dist, dist2D, type Vec3 } from './vec';
-import { WEAPONS, type WeaponId } from './weapons';
+import { NADE, WEAPONS, type NadeType, type WeaponId } from './weapons';
 
 /**
  * Bot AI. Bots are ordinary simulation participants: they only ever act by
@@ -111,6 +111,11 @@ interface Brain {
   advanceBlockedUntil: number;
   /** No new retreat before this time (stops retreat <-> objective ping-pong). */
   retreatReadyAt: number;
+  /** A grenade to throw at a point, until a deadline (dropped after it). */
+  throwPlan: { type: NadeType; target: Vec3; until: number; fireToggle: boolean } | null;
+  /** "Flash out": look away from a teammate's flashbang until then, toward `awayYaw`. */
+  turnAwayUntil: number;
+  awayYaw: number;
   // progress monitoring
   progAt: number;
   progPos: Vec3;
@@ -151,6 +156,17 @@ export interface BotDebug {
 }
 
 const ROLES_A: Role[] = ['entry', 'flank', 'support', 'lurk', 'support', 'flank', 'support', 'lurk'];
+/**
+ * Launch pitch (radians above horizontal) that lands a throw `dx` metres
+ * away and `dy` metres higher, at speed `v`: the flatter of the two arcs.
+ */
+export function throwPitch(dx: number, dy: number, v: number): number {
+  const g = NADE.gravity;
+  const disc = v ** 4 - g * (g * dx * dx + 2 * dy * v * v);
+  if (disc < 0 || dx < 0.5) return Math.PI / 4;
+  return Math.atan((v * v - Math.sqrt(disc)) / (g * dx));
+}
+
 const PREFERRED_RANGE: Record<string, number> = { melee: 1, pistol: 12, smg: 10, shotgun: 6, rifle: 16, sniper: 30, mg: 14 };
 
 export class BotDirector {
@@ -204,7 +220,7 @@ export class BotDirector {
         targetId: null, targetSince: 0, reactionAt: 0, visible: 0, memory: null, engagedUntil: 0,
         aimYaw: p.yaw, aimPitch: 0, errYaw: 0, errPitch: 0, errAt: 0,
         strafeDir: 1, strafeUntil: 0, burstLeft: 0, burstPauseUntil: 0, semiToggle: false, wantScope: false,
-        nextPerceive: 0, boughtRound: -1, combatPathAt: 0, advanceBlockedUntil: 0, retreatReadyAt: 0,
+        nextPerceive: 0, boughtRound: -1, combatPathAt: 0, advanceBlockedUntil: 0, retreatReadyAt: 0, throwPlan: null, turnAwayUntil: 0, awayYaw: 0,
         progAt: 0, progPos: { ...p.body.pos }, stuckCount: 0, stuckTime: 0, sideUntil: 0, sideDir: null, jumpUntil: 0, crowdedSince: -1,
       };
       this.brains.set(p.id, b);
@@ -241,6 +257,25 @@ export class BotDirector {
         const victim = sim.getPlayer(ev.victim);
         const killer = sim.getPlayer(ev.killer);
         if (victim && killer && killer.team !== victim.team) this.report(victim.team, victim.body.pos, 'death', victim.id, killer.id);
+        continue;
+      }
+      if (ev.type === 'nadeThrow') {
+        // That throw is done (a second grenade of the kind waits for a new plan).
+        const tb = this.brains.get(ev.player);
+        if (tb) tb.throwPlan = null;
+      }
+      if (ev.type === 'nadeThrow' && ev.nade === 'flash') {
+        // "Flash out": the thrower and teammates who can see where it's going turn their backs.
+        const thrower = sim.getPlayer(ev.player);
+        if (thrower) {
+          for (const q of this.alive(thrower.team)) {
+            if (q !== thrower && dist2D(q.body.pos, thrower.body.pos) > 25) continue;
+            const qb = this.brain(q);
+            if (qb.targetId !== null) continue;
+            qb.turnAwayUntil = sim.time + 1.9;
+            qb.awayYaw = thrower.yaw + Math.PI;
+          }
+        }
         continue;
       }
       if (ev.type === 'planted') {
@@ -565,6 +600,12 @@ export class BotDirector {
     const repeat = kind === 'seen' && sim.time - (sightings.get(enemy) ?? -99) < 4;
     if (kind === 'seen' && !repeat) sightings.set(enemy, sim.time);
     const k = repeat ? 0 : kind === 'death' ? 2 : 1;
+    // An HE at attackers bunched near a site, from a Defender who can reach them.
+    if (team === 'D' && kind === 'seen' && !repeat) {
+      const near = (['A', 'B'] as const).some((s) => dist2D(pos, this.tactics.site[s]) < 18);
+      const thrower = near && bots.find((q) => q.nades.he > 0 && !this.brain(q).throwPlan && this.brain(q).targetId === null && dist2D(q.body.pos, pos) > 8 && dist2D(q.body.pos, pos) < 24);
+      if (thrower) this.brain(thrower).throwPlan = { type: 'he', target: { ...pos }, until: sim.time + 2.5, fireToggle: false };
+    }
     const responders = scored.slice(0, k);
     if (team === 'D') this.rotate(pos, enemy, responders.map((r) => r.p));
     for (const { p, b } of responders) {
@@ -628,7 +669,8 @@ export class BotDirector {
     const prim = p.weapons[1];
     const sec = p.weapons[2];
     const want: 1 | 2 | 3 = prim && prim.mag + prim.reserve > 0 ? 1 : sec && sec.mag + sec.reserve > 0 ? 2 : 3;
-    if (p.current !== want && !sim.isReloading(p)) cmd.slot = want;
+    if (b.throwPlan && (now > b.throwPlan.until || p.nades[b.throwPlan.type] <= 0 || sim.phase !== 'live')) b.throwPlan = null;
+    if (p.current !== want && !sim.isReloading(p) && !b.throwPlan) cmd.slot = want;
 
     if (now >= b.nextPerceive) {
       b.nextPerceive = now + 0.1;
@@ -680,6 +722,12 @@ export class BotDirector {
           lookYaw = anglesFromDir(moveDir).yaw;
         }
       }
+      const thrown = this.tickThrow(p, b, cmd);
+      if (thrown) {
+        moveDir = null;
+        lookYaw = thrown.yaw;
+        lookPitch = thrown.pitch;
+      }
       // Plant (once the team is going in, or late) or defuse when standing in
       // the right place with nobody in view.
       const plant = sim.canPlant(p) !== null && (this.plans.A.pushAt <= now || sim.timeLeft() < 30 || b.state === 'hold');
@@ -689,6 +737,10 @@ export class BotDirector {
       }
     }
 
+    if (!target && now < b.turnAwayUntil && !b.throwPlan) {
+      lookYaw = b.awayYaw;
+      lookPitch = 0;
+    }
     // ---- turn the view toward lookYaw at limited speed
     if (lookYaw !== null) {
       const maxTurn = d.turnSpeed * (1 / 60);
@@ -721,6 +773,40 @@ export class BotDirector {
     this.checkProgress(p, b, cmd, moveDir);
     if (now < b.jumpUntil) cmd.jump = true;
     return cmd;
+  }
+
+  /**
+   * Works through a throw plan with ordinary commands: take out the right
+   * grenade (key 4, again to cycle), aim on a ballistic arc, throw.
+   * Returns the view angles to hold while doing it, or null.
+   */
+  private tickThrow(p: SimPlayer, b: Brain, cmd: PlayerCmd): { yaw: number; pitch: number } | null {
+    const plan = b.throwPlan;
+    const sim = this.sim;
+    if (!plan) return null;
+    const held = p.weapons[4];
+    if (p.current !== 4 || !held || held.id !== plan.type) {
+      if (sim.time >= p.switchEnd) cmd.slot = 4;
+      return null;
+    }
+    const eye = sim.eyePos(p);
+    const dx = dist2D(eye, plan.target);
+    const yaw = anglesFromDir({ x: plan.target.x - eye.x, y: 0, z: plan.target.z - eye.z }).yaw;
+    const pitch = throwPitch(dx, plan.target.y - eye.y, NADE.throwSpeed) - 0.12;
+    // Only with a clear start to the arc: thrown into a wall a few metres
+    // away, a grenade bounces back onto your own team.
+    const a = pitch + 0.12;
+    const early = { x: eye.x - Math.sin(yaw) * Math.cos(a) * 5, y: eye.y + Math.sin(a) * 5, z: eye.z - Math.cos(yaw) * Math.cos(a) * 5 };
+    if (!sim.map.world.lineOfSight(eye, early)) {
+      b.throwPlan = null;
+      return null;
+    }
+    const onAim = Math.abs(angleDiff(b.aimYaw, yaw)) < 0.08 && Math.abs(b.aimPitch - pitch) < 0.08;
+    if (onAim && sim.time >= p.switchEnd && sim.time >= p.nextFire) {
+      plan.fireToggle = !plan.fireToggle;
+      cmd.fire = plan.fireToggle; // a press, not a hold
+    }
+    return { yaw, pitch };
   }
 
   /** Tactical decision for a bot with no enemy in view (runs every ~0.4–0.8 s). */
@@ -829,6 +915,14 @@ export class BotDirector {
       this.setDest(p, b, spot ? spot.pos : sim.map.rectCenter(r), 'hold', `carrier: plant at ${site}`, spot?.look ?? null, b.route);
       b.holdUntil = Infinity;
       return;
+    }
+    // Going in: flash the site, or smoke off the way the Defenders come from.
+    const c = this.tactics.site[site];
+    if (p.nades.flash > 0 && sim.random() < 0.8) b.throwPlan = { type: 'flash', target: { x: c.x, y: c.y + 1.5, z: c.z }, until: sim.time + 3, fireToggle: false };
+    else if (p.nades.smoke > 0) {
+      const ds = this.tactics.spawn.D;
+      const l = Math.max(1, dist2D(ds, c));
+      b.throwPlan = { type: 'smoke', target: { x: c.x + ((ds.x - c.x) / l) * 6, y: c.y, z: c.z + ((ds.z - c.z) / l) * 6 }, until: sim.time + 3, fireToggle: false };
     }
     const inner = this.tactics.holdSpots(site).filter((s) => sim.map.inRect(s.pos, { x0: r.x0 - 3, z0: r.z0 - 3, x1: r.x1 + 3, z1: r.z1 + 3 }));
     const spot = chooseSpot(inner, this.claims(p), this.claimedAreas(p), () => sim.random(), { minSep: 6, from: p.body.pos, maxTravel: 25 });
@@ -1230,6 +1324,11 @@ export class BotDirector {
     // Defenders who can spare it carry a kit (it halves the defuse time).
     if (p.team === 'D' && !p.kit && this.difficulty !== 'easy') order.push('defuser');
     for (const item of order) sim.buy(p, item as Parameters<Simulation['buy']>[1]);
+    // Grenades with what's left (not on the pistol round).
+    if (sim.round > 1 && this.difficulty !== 'easy') {
+      const nades: NadeType[] = p.team === 'A' ? (sim.random() < 0.5 ? ['flash', 'smoke'] : ['flash', 'he']) : sim.random() < 0.6 ? ['he', 'flash'] : ['flash'];
+      for (const t of nades) if (p.money >= WEAPONS[t].price + 200) sim.buy(p, t);
+    }
   }
 
   /** Default team name list for bots. */

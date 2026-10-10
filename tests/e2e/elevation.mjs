@@ -23,7 +23,7 @@ await page.click('text=Play Solo');
 await page.click('.seg button:has-text("Attackers")');
 await page.click('text=Start Match');
 await page.waitForFunction(() => !!window.__cs);
-await page.evaluate(() => { const s = window.__cs; s.input.testMode = true; s.onLockChange(true); s.paused = true; for (let i = 0; i < 300; i++) s.step(); });
+await page.evaluate(() => { const s = window.__cs; s.input.testMode = true; s.onLockChange(true); s.paused = true; for (let i = 0; i < 300; i++) s.step(); s.bots = null; for (const p of s.sim.players) if (p !== s.me) { p.body.pos = { x: 40, y: -5, z: 30 }; p.external = true; } });
 
 /** Puts the local player on a cell, facing a yaw (radians, 0 = -Z) and pitch. */
 const place = (cx, cz, yaw, pitch = 0) => page.evaluate(([cx, cz, yaw, pitch]) => {

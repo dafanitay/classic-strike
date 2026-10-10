@@ -5,9 +5,13 @@ import { expandPattern, patternStep, type RecoilOffset } from './recoil';
 import { add, clamp, dirFromAngles, dist, makeRng, scale, type Vec3 } from './vec';
 import {
   BUYABLE,
+  NADE,
+  NADE_TYPES,
   WEAPONS,
   computeDamage,
   freshWeapon,
+  isNade,
+  type NadeType,
   type HitGroup,
   type WeaponDef,
   type WeaponId,
@@ -82,6 +86,13 @@ export interface SimPlayer {
   respawnAt: number;
   /** Owns a defuse kit (Defenders only; lost on death). */
   kit: boolean;
+  /** Grenades carried (slot 4 holds the selected kind). */
+  nades: Record<NadeType, number>;
+  nadeSel: NadeType;
+  /** Flashed: fully blind until `blindFull`, then fading out until `blindEnd`. */
+  blindAt: number;
+  blindFull: number;
+  blindEnd: number;
   /** Plant or defuse in progress, and when it completes. */
   action: 'plant' | 'defuse' | null;
   actionEnd: number;
@@ -105,6 +116,25 @@ export interface SimPlayer {
 export type KillSource = WeaponId | 'bomb';
 
 export type BombSite = 'A' | 'B';
+
+/** A thrown grenade (in the air or rolling). */
+export interface Nade {
+  id: number;
+  type: NadeType;
+  owner: number;
+  pos: Vec3;
+  vel: Vec3;
+  thrownAt: number;
+  resting: boolean;
+}
+
+/** A smoke cloud: a sphere that blocks sight from `start` to `end`. */
+export interface Smoke {
+  id: number;
+  pos: Vec3;
+  start: number;
+  end: number;
+}
 
 /**
  * The bomb ("the charge"). One per round; given to a random Attacker at the
@@ -158,6 +188,9 @@ export type SimEvent =
   | { type: 'planted'; player: number; site: BombSite; pos: Vec3 }
   | { type: 'defused'; player: number }
   | { type: 'exploded'; pos: Vec3 }
+  | { type: 'nadeThrow'; player: number; nade: NadeType }
+  | { type: 'nadeBounce'; nade: NadeType; pos: Vec3 }
+  | { type: 'nadeExplode'; nade: NadeType; pos: Vec3 }
   | { type: 'roundStart'; round: number }
   | { type: 'freezeEnd' }
   | { type: 'roundEnd'; winner: Team | null; reason: string }
@@ -222,7 +255,7 @@ export function sprayPattern(def: WeaponDef): RecoilOffset[] {
 
 function cloneWeapons(w: SimPlayer['weapons']): SimPlayer['weapons'] {
   const out: SimPlayer['weapons'] = {};
-  for (const k of [1, 2, 3] as WeaponSlot[]) if (w[k]) out[k] = { ...w[k]! };
+  for (const k of [1, 2, 3, 4] as WeaponSlot[]) if (w[k]) out[k] = { ...w[k]! };
   return out;
 }
 
@@ -264,6 +297,10 @@ export class Simulation {
   lastWinner: Team | null = null;
   lastReason = '';
   bomb: BombState = { state: 'none', carrier: 0, pos: { x: 0, y: 0, z: 0 }, site: null, plantedAt: 0, explodeAt: 0, defuser: 0 };
+  /** Grenades in the air or rolling, and smoke clouds. */
+  nadesInFlight: Nade[] = [];
+  smokes: Smoke[] = [];
+  private nadeSeq = 0;
   /** Who last threw the bomb, and until when they can't pick it back up. */
   private dropGuard = { id: 0, until: 0 };
   private nextId = 1;
@@ -323,6 +360,11 @@ export class Simulation {
       lastHurt: -10,
       respawnAt: 0,
       kit: false,
+      nades: { he: 0, flash: 0, smoke: 0 },
+      nadeSel: 'he',
+      blindAt: -10,
+      blindFull: -10,
+      blindEnd: -10,
       action: null,
       actionEnd: 0,
       useLatch: false,
@@ -360,6 +402,23 @@ export class Simulation {
   private giveDefaultLoadout(p: SimPlayer): void {
     p.weapons = { 2: freshWeapon('p9'), 3: freshWeapon('knife') };
     p.current = 2;
+    p.nades = { he: 0, flash: 0, smoke: 0 };
+  }
+
+  /**
+   * Slot 4 mirrors the grenade belt: it holds the selected kind (with how
+   * many are left as its "magazine"), moves on to another kind when one runs
+   * out, and disappears when none are left.
+   */
+  private syncNadeSlot(p: SimPlayer): void {
+    if (p.nades[p.nadeSel] <= 0) p.nadeSel = NADE_TYPES.find((t) => p.nades[t] > 0) ?? p.nadeSel;
+    if (p.nades[p.nadeSel] > 0) {
+      p.weapons[4] = { id: p.nadeSel, mag: p.nades[p.nadeSel], reserve: 0 };
+      if (p.current === 4 && p.weapons[4].id !== p.nadeSel) p.weapons[4].id = p.nadeSel;
+      return;
+    }
+    delete p.weapons[4];
+    if (p.current === 4) this.selectSlot(p, p.weapons[1] ? 1 : p.weapons[2] ? 2 : 3, true);
   }
 
   private spawn(p: SimPlayer, index: number): void {
@@ -385,6 +444,7 @@ export class Simulation {
     p.action = null;
     p.actionEnd = 0;
     p.useLatch = false;
+    p.blindAt = p.blindFull = p.blindEnd = -10;
     p.cmd = emptyCmd(p.yaw, 0);
     if (!p.weapons[p.current]) p.current = p.weapons[1] ? 1 : 2;
   }
@@ -450,6 +510,9 @@ export class Simulation {
       const w = p.weapons[item === 'ammo1' ? 1 : 2];
       if (!w) return 'No weapon in that slot.';
       if (w.reserve >= WEAPONS[w.id].reserve) return 'Ammo is already full.';
+    } else if (isNade(item as WeaponId)) {
+      const t = item as NadeType;
+      if (p.nades[t] >= NADE.max[t]) return `You can't carry more ${WEAPONS[t].name}s.`;
     } else {
       const def = WEAPONS[item as WeaponId];
       if (!def || !BUYABLE.includes(def.id)) return 'Unknown item.';
@@ -466,6 +529,11 @@ export class Simulation {
     } else if (item === 'ammo1' || item === 'ammo2') {
       const w = p.weapons[item === 'ammo1' ? 1 : 2]!;
       w.reserve = WEAPONS[w.id].reserve;
+    } else if (isNade(item as WeaponId)) {
+      const t = item as NadeType;
+      p.nades[t]++;
+      if (!p.weapons[4]) p.nadeSel = t;
+      this.syncNadeSlot(p);
     } else {
       const def = WEAPONS[item as WeaponId];
       p.weapons[def.slot] = freshWeapon(def.id);
@@ -523,6 +591,7 @@ export class Simulation {
         p.deaths = s.deaths;
         p.weapons = cloneWeapons(s.weapons);
         p.current = s.current;
+        p.nades = { ...s.nades };
         p.alive = true; // keep the restored kit instead of the default one
       } else {
         p.alive = false;
@@ -535,7 +604,7 @@ export class Simulation {
   private roundSnapshot: {
     score: Record<Team, number>;
     lossStreak: Record<Team, number>;
-    players: Map<number, { money: number; armor: number; helmet: boolean; kit: boolean; kills: number; deaths: number; weapons: SimPlayer['weapons']; current: WeaponSlot }>;
+    players: Map<number, { money: number; armor: number; helmet: boolean; kit: boolean; kills: number; deaths: number; weapons: SimPlayer['weapons']; current: WeaponSlot; nades: Record<NadeType, number> }>;
   } | null = null;
 
   startRound(): void {
@@ -559,6 +628,8 @@ export class Simulation {
     }
     this.bomb = { state: 'none', carrier: 0, pos: { x: 0, y: 0, z: 0 }, site: null, plantedAt: 0, explodeAt: 0, defuser: 0 };
     this.dropGuard = { id: 0, until: 0 };
+    this.nadesInFlight = [];
+    this.smokes = [];
     if (this.config.bomb) {
       const attackers = order.filter((p) => p.team === 'A');
       if (attackers.length) {
@@ -572,7 +643,7 @@ export class Simulation {
       players: new Map(
         this.players.map((p) => [
           p.id,
-          { money: p.money, armor: p.armor, helmet: p.helmet, kit: p.kit, kills: p.kills, deaths: p.deaths, weapons: cloneWeapons(p.weapons), current: p.current },
+          { money: p.money, armor: p.armor, helmet: p.helmet, kit: p.kit, kills: p.kills, deaths: p.deaths, weapons: cloneWeapons(p.weapons), current: p.current, nades: { ...p.nades } },
         ]),
       ),
     };
@@ -667,6 +738,7 @@ export class Simulation {
       if (!p.alive || p.external) continue;
       this.tickPlayer(p);
     }
+    this.tickNades();
   }
 
   /** Runs one command for an external (networked) player within the current tick. */
@@ -863,6 +935,17 @@ export class Simulation {
   }
 
   selectSlot(p: SimPlayer, slot: WeaponSlot, force = false): void {
+    if (slot === 4 && p.current === 4 && !force && p.weapons[4]) {
+      // Pressing the grenade key again cycles through the kinds you carry.
+      const i = NADE_TYPES.indexOf(p.nadeSel);
+      const next = [1, 2].map((k) => NADE_TYPES[(i + k) % 3]).find((t) => p.nades[t] > 0);
+      if (!next) return;
+      p.nadeSel = next;
+      this.syncNadeSlot(p);
+      p.switchEnd = this.time + WEAPONS[next].drawTime;
+      this.events.push({ type: 'switch', player: p.id, weapon: next });
+      return;
+    }
     if ((!force && slot === p.current) || !p.weapons[slot]) return;
     p.current = slot;
     p.reloadEnd = 0;
@@ -937,6 +1020,10 @@ export class Simulation {
     p.fireHeld = cmd.fire;
     if (frozen || this.time < p.switchEnd || p.reloadEnd > 0 || this.time < p.nextFire) return;
 
+    if (def.cls === 'grenade') {
+      if ((firePressed || altPressed) && w && isNade(w.id) && p.nades[w.id] > 0) this.throwNade(p, w.id, altPressed && !firePressed);
+      return;
+    }
     if (def.cls === 'melee') {
       if (cmd.fire) this.melee(p, def, def.damage, def.cycle);
       else if (altPressed) this.melee(p, def, 65, 1.0);
@@ -1074,6 +1161,8 @@ export class Simulation {
       victim.respawnAt = this.time + 2;
       victim.scope = 0;
       victim.kit = false;
+      victim.nades = { he: 0, flash: 0, smoke: 0 };
+      delete victim.weapons[4];
       this.stopAction(victim);
       this.dropBomb(victim);
       if (attacker && attacker !== victim) {
@@ -1091,8 +1180,143 @@ export class Simulation {
 
   /** Line of sight between two players' eyes (used by bots and audio). */
   canSee(a: SimPlayer, b: SimPlayer): boolean {
+    if (this.time < a.blindFull) return false; // flashed
     const ea = this.eyePos(a);
     const targets = [this.eyePos(b), { x: b.body.pos.x, y: b.body.pos.y + bodyHeight(b.body) * 0.55, z: b.body.pos.z }];
-    return targets.some((t) => this.map.world.lineOfSight(ea, t));
+    return targets.some((t) => this.map.world.lineOfSight(ea, t) && !this.smokeBlocks(ea, t));
+  }
+
+  // --------------------------------------------------------------- grenades
+
+  /** Current radius of a smoke cloud (grows in, thins out at the end); 0 once gone. */
+  smokeRadius(s: Smoke, time = this.time): number {
+    if (time < s.start || time >= s.end) return 0;
+    const grow = Math.min(1, (time - s.start) / NADE.smokeGrow);
+    const fade = Math.min(1, (s.end - time) / NADE.smokeFade);
+    return NADE.smokeRadius * Math.sqrt(grow) * (0.55 + 0.45 * fade);
+  }
+
+  /** True when a smoke cloud lies across the line from a to b. */
+  smokeBlocks(a: Vec3, b: Vec3): boolean {
+    for (const s of this.smokes) {
+      const r = this.smokeRadius(s) * 0.9;
+      if (r <= 0) continue;
+      // Closest point of the segment to the cloud's centre.
+      const d = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+      const len2 = d.x * d.x + d.y * d.y + d.z * d.z || 1;
+      const t = clamp(((s.pos.x - a.x) * d.x + (s.pos.y - a.y) * d.y + (s.pos.z - a.z) * d.z) / len2, 0, 1);
+      const c = { x: a.x + d.x * t, y: a.y + d.y * t, z: a.z + d.z * t };
+      if (dist(c, s.pos) < r) return true;
+    }
+    return false;
+  }
+
+  private throwNade(p: SimPlayer, type: NadeType, lob: boolean): void {
+    const dir = dirFromAngles(p.yaw, Math.min(1.4, p.pitch + 0.12));
+    const eye = this.eyePos(p);
+    const speed = lob ? NADE.lobSpeed : NADE.throwSpeed;
+    let pos = add(eye, scale(dir, 0.35));
+    if (!this.map.world.lineOfSight(eye, pos)) pos = { ...eye };
+    this.nadesInFlight.push({
+      id: ++this.nadeSeq,
+      type,
+      owner: p.id,
+      pos,
+      vel: { x: dir.x * speed + p.body.vel.x * 0.6, y: dir.y * speed + (lob ? 1.5 : 0), z: dir.z * speed + p.body.vel.z * 0.6 },
+      thrownAt: this.time,
+      resting: false,
+    });
+    p.nades[type]--;
+    p.nextFire = this.time + 0.9;
+    this.events.push({ type: 'nadeThrow', player: p.id, nade: type });
+    this.syncNadeSlot(p);
+  }
+
+  private tickNades(): void {
+    const dt = TICK_DT;
+    for (let i = this.nadesInFlight.length - 1; i >= 0; i--) {
+      const n = this.nadesInFlight[i];
+      if (!n.resting) {
+        n.vel.y -= NADE.gravity * dt;
+        const delta = scale(n.vel, dt);
+        const hit = this.map.world.raycast(n.pos, delta, 1);
+        if (hit) {
+          n.pos = add(add(n.pos, scale(delta, hit.t)), scale(hit.normal, 0.02));
+          const vn = n.vel.x * hit.normal.x + n.vel.y * hit.normal.y + n.vel.z * hit.normal.z;
+          const speed = Math.hypot(n.vel.x, n.vel.y, n.vel.z);
+          n.vel = {
+            x: (n.vel.x - 2 * vn * hit.normal.x) * NADE.bounce,
+            y: (n.vel.y - 2 * vn * hit.normal.y) * NADE.bounce,
+            z: (n.vel.z - 2 * vn * hit.normal.z) * NADE.bounce,
+          };
+          if (hit.normal.y > 0.7) {
+            // Floor: lose most of the roll (dirt, tiles and concrete grip).
+            n.vel.x *= 0.5;
+            n.vel.z *= 0.5;
+            if (Math.hypot(n.vel.x, n.vel.y, n.vel.z) < 0.6) {
+              n.resting = true;
+              n.vel = { x: 0, y: 0, z: 0 };
+            }
+          }
+          if (speed > 2.5) this.events.push({ type: 'nadeBounce', nade: n.type, pos: { ...n.pos } });
+        } else {
+          n.pos = add(n.pos, delta);
+        }
+      }
+      const age = this.time - n.thrownAt;
+      const due = n.type === 'smoke' ? (n.resting && age > 0.6) || age >= NADE.fuse.smoke : age >= NADE.fuse[n.type];
+      if (n.pos.y < -10) {
+        this.nadesInFlight.splice(i, 1);
+      } else if (due) {
+        this.nadesInFlight.splice(i, 1);
+        this.detonate(n);
+      }
+    }
+    if (this.smokes.length) this.smokes = this.smokes.filter((s) => this.time < s.end);
+  }
+
+  private detonate(n: Nade): void {
+    const pos = n.pos;
+    this.events.push({ type: 'nadeExplode', nade: n.type, pos: { ...pos } });
+    const owner = this.getPlayer(n.owner) ?? null;
+    const from = { x: pos.x, y: pos.y + 0.15, z: pos.z };
+    if (n.type === 'smoke') {
+      this.smokes.push({ id: n.id, pos: { x: pos.x, y: pos.y + 1.2, z: pos.z }, start: this.time, end: this.time + NADE.smokeDuration });
+      return;
+    }
+    for (const p of this.players) {
+      if (!p.alive) continue;
+      if (n.type === 'he') {
+        const chest = { x: p.body.pos.x, y: p.body.pos.y + bodyHeight(p.body) * 0.55, z: p.body.pos.z };
+        const d = dist(from, chest);
+        if (d >= NADE.heRadius || !this.map.world.lineOfSight(from, chest)) continue;
+        if (owner && p !== owner && p.team === owner.team && !this.config.friendlyFire) continue;
+        let dmg = NADE.heDamage * Math.pow(1 - d / NADE.heRadius, 1.5);
+        if (p.armor > 0) {
+          // Armour takes half of the blast and wears down by as much.
+          const absorbed = Math.min(p.armor, dmg * 0.5);
+          p.armor = Math.max(0, Math.round(p.armor - absorbed));
+          dmg -= absorbed;
+        }
+        if (dmg >= 1) this.damage(p, owner, Math.round(dmg), 'chest', { ...p.body.pos }, 'he');
+      } else {
+        // Flashbang: how blinding depends on distance and where you look.
+        const eye = this.eyePos(p);
+        const d = dist(from, eye);
+        if (d >= NADE.flashRadius || !this.map.world.lineOfSight(from, eye) || this.smokeBlocks(from, eye)) continue;
+        const view = dirFromAngles(p.yaw, p.pitch);
+        const to = scale({ x: from.x - eye.x, y: from.y - eye.y, z: from.z - eye.z }, 1 / Math.max(d, 0.01));
+        const dot = view.x * to.x + view.y * to.y + view.z * to.z;
+        // Looking at it: full effect; side-on: partial; back turned: nothing.
+        const facing = dot > 0.5 ? 1 : dot > 0 ? 0.6 : dot > -0.3 ? 0.25 : 0;
+        const k = facing * Math.pow(1 - d / NADE.flashRadius, 0.7);
+        if (k < 0.05) continue;
+        const full = NADE.flashFull * k;
+        // A second flash only ever makes it worse.
+        p.blindAt = this.time;
+        p.blindFull = Math.max(p.blindFull, this.time + full);
+        p.blindEnd = Math.max(p.blindEnd, this.time + full + NADE.flashFade * k);
+      }
+    }
   }
 }

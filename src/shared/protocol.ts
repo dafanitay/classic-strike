@@ -1,7 +1,7 @@
 import type { Team } from './map';
 import type { BombState, BuyItem, Phase, PlayerCmd, SimEvent, SimPlayer, Simulation } from './sim';
 import { EQUIPMENT } from './sim';
-import { BUYABLE, WEAPONS, type WeaponId, type WeaponSlot } from './weapons';
+import { BUYABLE, NADE_TYPES, WEAPONS, type NadeType, type WeaponId, type WeaponSlot } from './weapons';
 
 /**
  * Client <-> server messages (JSON over WebSocket). The client only ever
@@ -77,7 +77,15 @@ export interface PlayerSnap {
   ac: 0 | 1 | 2; // action: none / planting / defusing
   ae: number; // action end time
   ul: 0 | 1; // use latch
+  nd: [number, number, number]; // grenades carried: he, flash, smoke
+  ns: number; // selected grenade (index into NADE_TYPES)
+  bl: [number, number, number]; // flashed: at, fully blind until, fading until
 }
+
+/** A grenade in the air: [id, kind, x, y, z, vx, vy, vz]. */
+export type NadeSnap = [number, number, number, number, number, number, number, number];
+/** A smoke cloud: [id, x, y, z, start, end]. */
+export type SmokeSnap = [number, number, number, number, number, number];
 
 /** The bomb, as every client sees it (including its carrier). */
 export interface BombSnap {
@@ -101,6 +109,8 @@ export interface Snapshot {
   ack: number; // last cmd seq processed for the receiving player
   players: PlayerSnap[];
   events: SimEvent[];
+  nades: NadeSnap[];
+  smokes: SmokeSnap[];
 }
 
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -113,7 +123,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
  */
 export function encodePlayer(p: SimPlayer, exact = false): PlayerSnap {
   const w: PlayerSnap['w'] = [];
-  for (const slot of [1, 2, 3] as WeaponSlot[]) {
+  for (const slot of [1, 2, 3, 4] as WeaponSlot[]) {
     const ws = p.weapons[slot];
     if (ws) w.push([slot, ws.id, ws.mag, ws.reserve]);
   }
@@ -128,6 +138,8 @@ export function encodePlayer(p: SimPlayer, exact = false): PlayerSnap {
     w, cu: p.current, nf: r3(p.nextFire), rl: r3(p.reloadEnd), se: r3(p.switchEnd), sc: p.scope,
     pp: r3(p.punchPitch), py: r3(p.punchYaw), sa: r3(p.spreadAccum), lh: r2(p.lastHurt),
     kt: p.kit ? 1 : 0, ac: p.action === 'plant' ? 1 : p.action === 'defuse' ? 2 : 0, ae: r3(p.actionEnd), ul: p.useLatch ? 1 : 0,
+    nd: [p.nades.he, p.nades.flash, p.nades.smoke], ns: NADE_TYPES.indexOf(p.nadeSel),
+    bl: [r2(p.blindAt), r3(p.blindFull), r3(p.blindEnd)],
   };
 }
 
@@ -152,7 +164,17 @@ export function encodeSnapshot(sim: Simulation, ack: number, events: SimEvent[],
     ack,
     players: sim.players.map((p) => encodePlayer(p, p.id === selfId)),
     events,
+    nades: sim.nadesInFlight.map((n) => [n.id, NADE_TYPES.indexOf(n.type), r3(n.pos.x), r3(n.pos.y), r3(n.pos.z), r3(n.vel.x), r3(n.vel.y), r3(n.vel.z)]),
+    smokes: sim.smokes.map((m) => [m.id, r3(m.pos.x), r3(m.pos.y), r3(m.pos.z), r3(m.start), r3(m.end)]),
   };
+}
+
+/** Puts a snapshot's grenades and smokes into a client-side mirror simulation. */
+export function applyNades(sim: Simulation, s: Snapshot): void {
+  sim.nadesInFlight = (s.nades ?? []).map(([id, k, x, y, z, vx, vy, vz]) => ({
+    id, type: NADE_TYPES[k] as NadeType, owner: 0, pos: { x, y, z }, vel: { x: vx, y: vy, z: vz }, thrownAt: s.time, resting: vx === 0 && vy === 0 && vz === 0,
+  }));
+  sim.smokes = (s.smokes ?? []).map(([id, x, y, z, start, end]) => ({ id, pos: { x, y, z }, start, end }));
 }
 
 /** Applies a player snapshot onto a client-side mirror player. */
@@ -192,6 +214,9 @@ export function applyPlayer(p: SimPlayer, s: PlayerSnap, includeBody = true): vo
   p.action = s.ac === 1 ? 'plant' : s.ac === 2 ? 'defuse' : null;
   p.actionEnd = s.ae;
   p.useLatch = !!s.ul;
+  if (s.nd) p.nades = { he: s.nd[0], flash: s.nd[1], smoke: s.nd[2] };
+  if (s.ns !== undefined) p.nadeSel = NADE_TYPES[s.ns] ?? 'he';
+  if (s.bl) [p.blindAt, p.blindFull, p.blindEnd] = s.bl;
 }
 
 // ------------------------------------------------------------ validation
@@ -262,7 +287,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
     }
     case 'buy': {
       const item = m.item as string;
-      const ok = (BUYABLE as string[]).includes(item) || item in EQUIPMENT;
+      const ok = (BUYABLE as string[]).includes(item) || (NADE_TYPES as string[]).includes(item) || item in EQUIPMENT;
       return ok && item in { ...WEAPONS, ...EQUIPMENT } ? { t: 'buy', item: item as BuyItem } : null;
     }
     case 'team':

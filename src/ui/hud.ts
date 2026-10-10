@@ -36,6 +36,9 @@ export class Hud {
   private readonly crossDot: HTMLElement;
   private xhair: CrosshairSettings = { ...DEFAULT_CROSSHAIR };
   private readonly hitMarkerEl: HTMLElement;
+  /** Full-screen white of a flashbang, and grey haze inside a smoke cloud. */
+  private readonly flashEl: HTMLElement;
+  private readonly smokeEl: HTMLElement;
   private hitMarkerUntil = 0;
   private readonly dmgDirs: { el: HTMLElement; until: number }[] = [];
   private readonly vignette: HTMLElement;
@@ -77,6 +80,8 @@ export class Hud {
     this.crossParts = ['t', 'b', 'l', 'r'].map((c) => el('i', c, undefined, this.cross));
     this.crossDot = el('i', 'dot', undefined, this.cross);
     this.hitMarkerEl = el('div', 'hitmarker', undefined, root);
+    this.smokeEl = el('div', 'screen-smoke', undefined, root);
+    this.flashEl = el('div', 'screen-flash', undefined, root);
     for (const c of ['a', 'b', 'c', 'd']) el('i', c, undefined, this.hitMarkerEl);
     const dmg = el('div', 'dmgdirs', undefined, root);
     for (let i = 0; i < 4; i++) this.dmgDirs.push({ el: el('div', 'dmgdir', undefined, dmg), until: 0 });
@@ -139,11 +144,11 @@ export class Hud {
       this.buyCats.push({ key: c.key, el: b });
     }
     const catOf = (item: BuyItem): string => {
-      if (!(item in WEAPONS)) return '6';
+      if (!(item in WEAPONS) || WEAPONS[item as WeaponId].cls === 'grenade') return '6';
       const cls = WEAPONS[item as WeaponId].cls;
       return BUY_CATEGORIES.find((c) => c.classes.includes(cls))!.key;
     };
-    const items: BuyItem[] = [...BUYABLE, 'kevlar', 'helmet', 'ammo1', 'ammo2', 'defuser'];
+    const items: BuyItem[] = [...BUYABLE, 'kevlar', 'helmet', 'flash', 'he', 'smoke', 'defuser', 'ammo1', 'ammo2'];
     for (const item of items) {
       const b = button('', 'buy-item hidden', () => this.onBuy(item), grid);
       el('span', 'k', '', b);
@@ -183,6 +188,23 @@ export class Hud {
   setCrosshair(c: CrosshairSettings): void {
     this.xhair = { ...c };
     this.cache.delete(this.cross);
+  }
+
+  /**
+   * @param blind 0..1 how white the screen is (flashbang)
+   * @param smoke 0..1 how deep the view is inside a smoke cloud
+   */
+  setScreenEffects(blind: number, smoke: number): void {
+    const b = blind.toFixed(2);
+    if (this.cache.get(this.flashEl) !== b) {
+      this.cache.set(this.flashEl, b);
+      this.flashEl.style.opacity = b;
+    }
+    const s = smoke.toFixed(2);
+    if (this.cache.get(this.smokeEl) !== s) {
+      this.cache.set(this.smokeEl, s);
+      this.smokeEl.style.opacity = s;
+    }
   }
 
   /** Brief hit confirmation at the crosshair: plain hit, headshot, or kill. */

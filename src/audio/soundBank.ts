@@ -20,7 +20,7 @@ import type { WeaponId } from '../shared/weapons';
  * doesn't sound like one sample on repeat.
  */
 
-export type GunSoundId = Exclude<WeaponId, 'knife'>;
+export type GunSoundId = Exclude<WeaponId, 'knife' | 'he' | 'flash' | 'smoke'>;
 export type ImpactKind = 'flesh' | 'head' | 'concrete' | 'wood' | 'ricochet';
 
 export interface SoundBank {

@@ -167,3 +167,8 @@ input[type='text'] { background: #1a1b15; color: var(--text); border: 1px solid 
 .clickplay .box p { color: var(--muted); margin: 4px 0; line-height: 1.5; }
 
 .fps { position: absolute; left: 6px; top: 4px; color: var(--muted); font-size: 11px; }
+
+/* Grenades: a flashbang whites the screen out, smoke greys it. */
+.screen-flash, .screen-smoke { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+.screen-flash { background: #fffdf6; z-index: 50; }
+.screen-smoke { background: #b8b8b2; z-index: 4; }

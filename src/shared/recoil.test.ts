@@ -124,8 +124,8 @@ describe('recoil', () => {
   it('every weapon has a well-formed pattern', () => {
     for (const def of Object.values(WEAPONS)) {
       const keys = def.recoilPattern;
-      if (def.cls === 'melee') {
-        expect(keys).toHaveLength(0);
+      if (def.cls === 'melee' || def.cls === 'grenade') {
+        expect(keys).toHaveLength(0); // no bullets, no spray
         continue;
       }
       expect(keys[0]).toEqual([0, 0, 0]); // first shot is not displaced
