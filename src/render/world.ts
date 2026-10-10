@@ -73,6 +73,9 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   const group = new THREE.Group();
   const aniso = quality === 'high' ? 8 : quality === 'medium' ? 4 : 1;
   const shadows = quality !== 'low';
+  // Baked-light vertex spacing: coarser on low (corner-only floors), which
+  // keeps its triangle count close to the unbaked map.
+  const fine = quality === 'low' ? 2 : 1;
   const disposables: { dispose(): void }[] = [];
   const cs = map.def.cellSize;
   const baker = makeBaker(map);
@@ -108,7 +111,7 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
       if (ai < 0 || map.stairAt(x, z) >= 0) continue;
       const kind = map.def.areas[ai].floor;
       const h = map.cellCenter(x, z).y;
-      floorGeos[kind].push(boxGeometry({ min: { x: x * cs, y: h - 0.1, z: z * cs }, max: { x: (x + 1) * cs, y: h, z: (z + 1) * cs } }, surface(floorTex[kind]).worldSize, ['py'], 1));
+      floorGeos[kind].push(boxGeometry({ min: { x: x * cs, y: h - 0.1, z: z * cs }, max: { x: (x + 1) * cs, y: h, z: (z + 1) * cs } }, surface(floorTex[kind]).worldSize, ['py'], fine));
     }
   }
   for (const kind of Object.keys(floorGeos) as FloorKind[]) addMerged(floorGeos[kind], mat(floorTex[kind]), false, true);
@@ -126,11 +129,11 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   const floorYs = [0, ...(map.def.levels ?? []).map((l) => l.height)];
   const rowsFor = (b: BuiltBox) => [...floorYs.filter((y) => y >= b.min.y - 0.01).map((y) => y + 0.9), ...roofYs];
   for (const b of map.boxes as BuiltBox[]) {
-    if (b.kind === 'wall') wallGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz', 'py'], 2, rowsFor(b)));
-    else if (b.kind === 'crate') crateGeos.push(boxGeometry(b, surface('crate').worldSize, undefined, 0.5, [b.min.y + 0.5]));
-    else if (b.kind === 'roof') roofGeos.push(boxGeometry(b, surface('roof').worldSize, undefined, 2));
+    if (b.kind === 'wall') wallGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz', 'py'], 2 * fine, rowsFor(b)));
+    else if (b.kind === 'crate') crateGeos.push(boxGeometry(b, surface('crate').worldSize, undefined, 0.5 * fine, [b.min.y + 0.5]));
+    else if (b.kind === 'roof') roofGeos.push(boxGeometry(b, surface('roof').worldSize, undefined, 2 * fine));
     // Raised floors: only the sides (the top is the painted floor above).
-    else if (b.kind === 'platform') platformGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz'], 2));
+    else if (b.kind === 'platform') platformGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz'], 2 * fine));
     else if (b.kind === 'step') stepGeos.push(boxGeometry(b, surface('concrete').worldSize, ['px', 'nx', 'pz', 'nz', 'py']));
   }
   addMerged(wallGeos, mat('wall'), true, true);

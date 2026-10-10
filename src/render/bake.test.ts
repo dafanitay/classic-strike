@@ -18,8 +18,10 @@ describe('baked lighting', () => {
     const tunnel = baker.light(floorAt(12, 25), UP); // under the B Tunnels roof
     const outside = baker.light(floorAt(5, 25), UP); // same lane, no roof
     expect(open).toBeGreaterThan(0.9);
-    expect(tunnel).toBeLessThan(0.5);
-    expect(outside).toBeGreaterThan(tunnel + 0.2);
+    expect(tunnel).toBeLessThan(open * 0.65);
+    // Dark, but not black: players must still see an enemy in there.
+    expect(tunnel).toBeGreaterThan(0.45);
+    expect(outside).toBeGreaterThan(tunnel + 0.1);
   });
 
   it('floor at the foot of a wall is darker than the middle of the lane', () => {
@@ -34,7 +36,7 @@ describe('baked lighting', () => {
     const n = { x: 0, y: 0, z: 1 }; // north tunnel wall, facing into the tunnel
     const below = baker.light({ x: c.x, y: 2, z: c.z - 1 }, n);
     const above = baker.light({ x: c.x, y: 4.5, z: c.z - 1 }, n);
-    expect(below).toBeLessThan(0.6);
+    expect(below).toBeLessThan(above * 0.7);
     expect(above).toBeGreaterThan(0.9);
   });
 

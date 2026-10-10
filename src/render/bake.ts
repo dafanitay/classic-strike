@@ -20,7 +20,7 @@ import type { Vec3 } from '../shared/vec';
 
 const RAY_LEN = 14;
 /** Brightness of a surface that sees no sky at all (relative to open sky). */
-const SKY_FLOOR = 0.42;
+const SKY_FLOOR = 0.55;
 
 /** Fixed, roughly cosine-weighted directions on the +Y hemisphere. */
 const HEMI: Vec3[] = (() => {
