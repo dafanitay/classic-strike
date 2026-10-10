@@ -4,6 +4,7 @@ import { gunModel } from '../render/guns';
 import { buildMap } from './map';
 import { DEPOT } from './maps/depot';
 import { Simulation, TICK_DT, emptyCmd } from './sim';
+import { weaponStats } from '../ui/hud';
 import { BUYABLE, BUY_CATEGORIES, WEAPONS, computeDamage, type WeaponId } from './weapons';
 
 /** The full arsenal: every gun is complete, buyable by the right team, and fills its role. */
@@ -141,5 +142,29 @@ describe('arsenal: buying and scopes in the simulation', () => {
       }
       expect(a.scope, `${id} after the bolt cycles`).toBe(1);
     }
+  });
+});
+
+describe('scoreboard damage', () => {
+  it('counts damage dealt to enemies, capped at what the victim had left; none for teammates', () => {
+    const map = buildMap(DEPOT);
+    const sim = new Simulation(map, { freezeTime: 0.05, friendlyFire: true }, 2);
+    const a = sim.addPlayer('a', 'A', false);
+    const a2 = sim.addPlayer('a2', 'A', false);
+    const d = sim.addPlayer('d', 'D', false);
+    while (sim.phase !== 'live') sim.tick();
+    sim.damage(d, a, 40, 'chest', d.body.pos, 'ar7');
+    sim.damage(d, a, 500, 'head', d.body.pos, 'ar7'); // only 60 were left
+    sim.damage(a2, a, 30, 'chest', a2.body.pos, 'ar7'); // a teammate
+    expect(a.damageDealt).toBe(100);
+  });
+});
+
+describe('buy menu stats', () => {
+  it('shows damage, rate, magazine and armour penetration for guns; nothing for grenades', () => {
+    expect(weaponStats(WEAPONS.ar7)).toBe('36 dmg · 600 rpm · 30 rounds · 78% vs armour');
+    expect(weaponStats(WEAPONS.pump12)).toMatch(/^20×9 dmg/);
+    expect(weaponStats(WEAPONS.sg5)).toMatch(/scope$/);
+    expect(weaponStats(WEAPONS.he)).toBe('');
   });
 });

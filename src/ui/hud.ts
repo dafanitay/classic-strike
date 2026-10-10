@@ -61,6 +61,7 @@ export class Hud {
   private readonly bombTag: HTMLElement;
   private centerUntil = 0;
   private moneyFlashUntil = 0;
+  private moneyDelta!: HTMLElement;
   private lastMoney = -1;
   private scoreboardOpen = false;
   onBuy: (item: BuyItem) => void = () => {};
@@ -109,6 +110,7 @@ export class Hud {
     this.moneyWrap = el('div', 'hud-money', undefined, root);
     el('span', 'hud-icon', '$', this.moneyWrap);
     this.money = el('span', 'hud-num', '0', this.moneyWrap);
+    this.moneyDelta = el('span', 'hud-money-delta', '', this.moneyWrap);
 
     const bl = el('div', 'hud-bl', undefined, root);
     const hw = el('div', '', undefined, bl);
@@ -156,6 +158,8 @@ export class Hud {
       const isW = item in WEAPONS;
       el('span', 'cat', isW ? WEAPONS[item as WeaponId].cls : 'equipment', name);
       name.append(isW ? WEAPONS[item as WeaponId].name : EQUIPMENT[item as keyof typeof EQUIPMENT].name);
+      const st = isW ? weaponStats(WEAPONS[item as WeaponId]) : '';
+      if (st) el('span', 'stats', st, name);
       el('span', 'p', '$' + (isW ? WEAPONS[item as WeaponId].price : EQUIPMENT[item as keyof typeof EQUIPMENT].price), b);
       this.buyItems.push({ item, cat: catOf(item), el: b });
     }
@@ -231,9 +235,16 @@ export class Hud {
     this.toggle(this.health, 'low', p.health <= 25);
     this.set(this.armor, String(p.armor));
     this.set(this.money, String(me.money));
-    if (this.lastMoney >= 0 && me.money > this.lastMoney) this.moneyFlashUntil = now + 0.8;
+    if (this.lastMoney >= 0 && me.money !== this.lastMoney) {
+      // Like the classic HUD: show what just came in (or went out).
+      const d = me.money - this.lastMoney;
+      this.moneyDelta.textContent = `${d > 0 ? '+' : '−'}$${Math.abs(d)}`;
+      this.moneyDelta.className = `hud-money-delta show ${d > 0 ? 'up' : 'down'}`;
+      this.moneyFlashUntil = now + (d > 0 ? 1.6 : 1.0);
+    }
     this.lastMoney = me.money;
-    this.toggle(this.moneyWrap, 'flash', now < this.moneyFlashUntil);
+    this.toggle(this.moneyWrap, 'flash', now < this.moneyFlashUntil && this.moneyDelta.classList.contains('up'));
+    if (now >= this.moneyFlashUntil) this.toggle(this.moneyDelta, 'show', false);
 
     const w = p.weapons[p.current];
     const def = WEAPONS[w ? w.id : 'knife'];
@@ -388,7 +399,7 @@ export class Hud {
       el('span', '', `${sim.score[team]}`, h);
       const table = el('table', '', undefined, sb);
       const hr = el('tr', '', undefined, table);
-      for (const c of ['Name', '', 'Kills', 'Deaths', team === me.team ? 'Money' : '']) el('th', '', c, hr);
+      for (const c of ['Name', '', 'Kills', 'Deaths', 'Damage', team === me.team ? 'Money' : '']) el('th', '', c, hr);
       const players = sim.players.filter((p) => p.team === team).sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
       for (const p of players) {
         const tr = el('tr', (p.alive ? '' : 'dead') + (p === me ? ' me' : ''), undefined, table);
@@ -398,6 +409,7 @@ export class Hud {
         el('td', '', p.alive ? gear : 'dead', tr);
         el('td', 'n', String(p.kills), tr);
         el('td', 'n', String(p.deaths), tr);
+        el('td', 'n', String(Math.round(p.damageDealt)), tr);
         el('td', 'n', team === me.team ? `$${p.money}` : '', tr);
       }
     }
@@ -460,4 +472,12 @@ export class Hud {
     }
     return this.buyItems.find((b) => b.el.dataset.key === key && !b.el.disabled)?.item ?? null;
   }
+}
+
+/** One line of numbers for the buy menu: damage, fire rate, magazine, armour penetration. */
+export function weaponStats(def: (typeof WEAPONS)[WeaponId]): string {
+  if (def.cls === 'grenade' || def.cls === 'melee') return '';
+  const dmg = def.pellets > 1 ? `${def.damage}×${def.pellets}` : String(def.damage);
+  const rpm = Math.round(60 / def.cycle);
+  return `${dmg} dmg · ${rpm} rpm · ${def.magSize} rounds · ${Math.round(def.armorPen * 100)}% vs armour${def.scope ? ' · scope' : ''}`;
 }

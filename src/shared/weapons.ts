@@ -119,7 +119,7 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     recoilPattern: [[0, 0, 0], [1, 0, 0.8], [4, 0.1, 3.4], [8, -0.3, 6.2], [11, -1.7, 7.0], [15, -2.5, 7.4], [18, -0.8, 7.7], [22, 1.8, 7.9], [25, 2.7, 8.1], [29, 1.2, 8.3]], recoilTau: 0.12, killReward: 300,
   },
   k4: {
-    id: 'k4', name: 'K4 Carbine', slot: 1, cls: 'rifle', price: 3100, team: 'D',
+    id: 'k4', name: 'K4 Carbine', slot: 1, cls: 'rifle', price: 2700, team: 'D',
     damage: 33, pellets: 1, cycle: 0.09, automatic: true, magSize: 30, reserve: 90, reloadTime: 3.0,
     rangeModifier: 0.97, range: 200, armorPen: 0.7, maxSpeed: 230 * 0.0254,
     drawTime: 0.6, spreadBase: 0.18 * DEG, spreadMove: 2.8 * DEG, spreadAir: 8 * DEG, spreadPerShot: 0.025 * DEG, spreadMax: 0.5 * DEG, spreadRecovery: 3 * DEG, crouchFactor: 0.7,

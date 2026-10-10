@@ -133,7 +133,8 @@ function extras(g: THREE.Group, id: string, lit: boolean, muzzle: THREE.Object3D
       part(g, 0.04, 0.12, 0.06, 0, -0.045, 0.01, 0x1c1c1c, lit);
       muzzle.position.z -= 0.04;
       break;
-    case 'tp9': // compact with a vertical front grip
+    case 'tp9': // compact, tan polymer, vertical front grip
+      part(g, 0.052, 0.072, 0.3, 0, 0.02, -0.1, 0x8a7a5a, lit);
       part(g, 0.03, 0.09, 0.035, 0, -0.06, -0.24, POLY, lit);
       break;
     case 'r10': // boxy receiver, wire stock
@@ -141,13 +142,14 @@ function extras(g: THREE.Group, id: string, lit: boolean, muzzle: THREE.Object3D
       part(g, 0.012, 0.012, 0.18, 0.025, 0.0, 0.18, METAL_LIGHT, lit);
       part(g, 0.012, 0.012, 0.18, -0.025, 0.0, 0.18, METAL_LIGHT, lit);
       break;
-    case 'u45': // straight magazine and a full stock
+    case 'u45': // grey receiver, straight magazine, tan full stock
+      part(g, 0.052, 0.072, 0.34, 0, 0.02, -0.1, 0x4a4d52, lit);
       part(g, 0.035, 0.17, 0.05, 0, -0.09, -0.12, POLY, lit);
-      part(g, 0.04, 0.07, 0.2, 0, 0.0, 0.17, POLY, lit);
+      part(g, 0.04, 0.07, 0.2, 0, 0.0, 0.17, 0x7a6a4a, lit);
       break;
     case 'p50': // magazine along the top, bullpup body
       part(g, 0.05, 0.03, 0.28, 0, 0.075, -0.1, 0x2c3a2c, lit);
-      part(g, 0.06, 0.09, 0.26, 0, 0.0, 0.08, 0x2a2b2d, lit);
+      part(g, 0.06, 0.09, 0.26, 0, 0.0, 0.08, 0x3a4636, lit);
       break;
     case 'auto12': // black polymer, no wooden pump, ghost-ring sights
       part(g, 0.05, 0.05, 0.16, 0, 0.0, -0.36, POLY, lit);

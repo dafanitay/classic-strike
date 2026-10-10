@@ -266,3 +266,20 @@ are not to be changed silently:
 - Price the K4 like the AR-7 ($2700), or raise the Defender loss bonus.
 - Map: give Defenders a little more time to reach the sites. Defender
   Spawn is already between them, so this is the smallest lever.
+
+### Update after the arsenal and grenades: K4 priced like the AR-7
+
+The full arsenal (bots buy SMGs and cheaper rifles when short of money)
+and grenades changed the balance. They were re-measured on main before any
+price change (Defender round wins, 16 matches each, 5v5, first to 8):
+
+| | normal | hard |
+|---|---|---|
+| main after arsenal and grenades | 40% (71/179) | 26% (42/160) |
+| K4 $3100 → $2700, same as the AR-7 | 38% (74/194) | 36% (65/182) |
+
+At normal the two are within noise. At hard Defenders gain 10 points:
+their main rifle now comes a round earlier, as often as the Attackers'
+does. The owner left this decision to engineering ("do it however you
+think serves me best"). This was the smallest economy change, and it
+touches only the K4's price.

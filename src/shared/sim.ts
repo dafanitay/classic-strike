@@ -67,6 +67,8 @@ export interface SimPlayer {
   money: number;
   kills: number;
   deaths: number;
+  /** Damage dealt to enemies this match (scoreboard). */
+  damageDealt: number;
   weapons: Partial<Record<WeaponSlot, WeaponState>>;
   current: WeaponSlot;
   nextFire: number;
@@ -342,6 +344,7 @@ export class Simulation {
       money: this.config.startMoney,
       kills: 0,
       deaths: 0,
+      damageDealt: 0,
       weapons: {},
       current: 2,
       nextFire: 0,
@@ -1148,6 +1151,7 @@ export class Simulation {
   /** Applies final health damage and handles death bookkeeping. */
   damage(victim: SimPlayer, attacker: SimPlayer | null, amount: number, group: HitGroup, pos: Vec3, weapon: KillSource): void {
     if (!victim.alive) return;
+    if (attacker && attacker.team !== victim.team) attacker.damageDealt += Math.min(amount, Math.max(0, victim.health));
     victim.health -= amount;
     victim.lastHurt = this.time;
     // Getting shot slows you down ("tagging").

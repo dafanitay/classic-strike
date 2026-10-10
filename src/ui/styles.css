@@ -70,6 +70,10 @@ input[type='text'] { background: #1a1b15; color: var(--text); border: 1px solid 
 .hud-money { position: absolute; left: 22px; bottom: 62px; }
 .hud-money .hud-num { font-size: 24px; }
 .hud-money.flash .hud-num { color: #9ee07a; }
+.hud-money-delta { margin-left: 10px; font-size: 16px; font-weight: bold; opacity: 0; transition: opacity 0.25s; }
+.hud-money-delta.show { opacity: 1; }
+.hud-money-delta.up { color: #9ee07a; }
+.hud-money-delta.down { color: var(--red); }
 .hud-weapon { color: var(--amber-dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
 .hud-ammo .sep { color: var(--amber-dim); margin: 0 8px; font-size: 26px; }
 .hud-ammo .res { font-size: 22px; }
@@ -155,6 +159,7 @@ input[type='text'] { background: #1a1b15; color: var(--text); border: 1px solid 
 .buy-item .p { color: #9ee07a; font-variant-numeric: tabular-nums; }
 .buy-item.poor .p { color: var(--red); }
 .buy-item.na { opacity: 0.35; cursor: not-allowed; }
+.buy-item .stats { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .buy-item .cat { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
 .buy-item.hidden { display: none; }
 .buy-cat { font-size: 15px; padding: 12px 12px; }
