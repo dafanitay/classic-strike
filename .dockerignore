@@ -4,3 +4,9 @@ dist-server
 test-results
 .git
 *.log
+# Local environment files must never enter the build context: a manual
+# `fly deploy` uploads the context, and Vite would bake VITE_* values from
+# .env into the public client bundle. The example file is safe to include.
+.env
+.env.*
+!.env.example

@@ -38,7 +38,10 @@ jobs:
       url: https://${{ vars.FLY_APP }}.fly.dev
     steps:
       - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Pinned to an immutable commit of Fly's official action (release tag 1.6,
+      # verified to resolve to this SHA). This step installs the flyctl binary
+      # that the next step runs with FLY_API_TOKEN, so it must not float.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
       - name: Deploy (remote builder, single machine)
         run: |
           test -n "$FLY_APP" || { echo "Set the FLY_APP repository variable"; exit 1; }
@@ -58,15 +61,22 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npx playwright install --with-deps chromium
+      # The app name reaches the shell only as an environment variable, never
+      # by expression interpolation into the script text.
       - name: Wait for the app to answer
+        env:
+          FLY_APP: ${{ vars.FLY_APP }}
         run: |
+          test -n "$FLY_APP" || { echo "Set the FLY_APP repository variable"; exit 1; }
           for i in $(seq 1 30); do
-            curl -fsS "https://${{ vars.FLY_APP }}.fly.dev/healthz" && exit 0
+            curl -fsS "https://${FLY_APP}.fly.dev/healthz" && exit 0
             sleep 5
           done
           exit 1
       - name: Public URL checks (solo + two browsers online)
-        run: mkdir -p test-results && node tests/e2e/public.mjs "https://${{ vars.FLY_APP }}.fly.dev" test-results
+        env:
+          FLY_APP: ${{ vars.FLY_APP }}
+        run: mkdir -p test-results && node tests/e2e/public.mjs "https://${FLY_APP}.fly.dev" test-results
       - uses: actions/upload-artifact@v4
         if: always()
         with:
