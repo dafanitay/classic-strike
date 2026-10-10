@@ -37,7 +37,7 @@ export interface MatchStats {
   kills: number;
   timeouts: number;
   reasons: Record<string, number>;
-  early: Record<Team, RoundStats>; // first 25 s of each live round
+  early: Record<Team, RoundStats>; // 5–25 s into each live round
   whole: Record<Team, RoundStats>; // whole live rounds
   /** Ticks bots spent pressing movement keys without moving (>1 s windows). */
   stuckSeconds: number;
@@ -153,7 +153,8 @@ export function measureMatch(difficulty: Difficulty, seed: number, perTeam: numb
     for (const team of ['A', 'D'] as Team[]) {
       const alive = sim.players.filter((p) => p.team === team && p.alive);
       sample(map, alive, whole[team]);
-      if (sinceStart < 25) sample(map, alive, early[team]);
+      // 5–25 s: after leaving spawn (spawn points sit 2 m apart by design).
+      if (sinceStart >= 5 && sinceStart < 25) sample(map, alive, early[team]);
     }
     // Stuck: pressing movement keys while not moving, sampled every 0.5 s.
     for (const p of sim.players) {

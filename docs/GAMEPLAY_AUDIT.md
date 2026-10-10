@@ -93,3 +93,89 @@ Every Attacker got the *same objective* (one site), the *same route* (the
 deterministic shortest path from a shared spawn), at the *same moment*, and
 was re-targeted to the *same point* whenever anyone saw anything. Nothing in
 the AI knew where its teammates were going.
+
+## M3: what changed for the bots (implemented and tested)
+
+Architecture (`src/shared/tactics.ts`, `src/shared/bot.ts`):
+
+- **Tactical map, derived from the geometry** (nothing hand-placed; 55 ms
+  once per map):
+  - Alternative routes from each spawn to each site: A* is re-run while
+    penalising corridors already used, and near-duplicates are dropped. On
+    Depot this gives Short A (Catwalk), Mid Doors and Long A to A; Lower
+    Tunnel, Outside Tunnels and Mid Doors to B.
+  - Scored positions: site holds facing the Attackers' entries, mid control,
+    lurk spots, post-plant spots. Scores combine cover from neighbouring
+    walls and crates with line of sight to what should be watched.
+- **Team plans:**
+  - Attackers get roles (entry, flank, support, lurk) matched to personality,
+    each with its own route and a staging point spaced along it. They wait
+    outside the site and push together when half have staged, when a fight
+    starts at the site, or when time runs short. The lurker holds the other
+    site's approach. The bomb carrier never takes the entry or lurk role.
+  - Defenders split into anchors at A, anchors at B and mid. Each picks a
+    position away from teammates' claims and areas, and repositions on its
+    own timer.
+- **Spreading.** Destinations penalise teammates' positions, destinations and
+  areas. A crowding check (two bots within 2.5 m for 1.5 s, outside combat)
+  moves the lower-priority bot, with the reason recorded. Local avoidance
+  stops bots walking through each other.
+- **Information.** Each bot has its own memory: what it saw, what it heard,
+  what it was told. A sighting gets one responder and a teammate's death
+  gets two, chosen by distance and role; the rest only turn to look.
+  Defenders rotate when a site is hit: the mid player first, then an anchor
+  from the other site once contacts repeat (at most every 8 s per site).
+- **Combat.**
+  - Closing distance follows the nav grid, which fixes D3.
+  - Strafing probes for walls before moving.
+  - A bot retreats to cover when outnumbered, hurt or reloading, and cautious
+    bots reposition after a fight.
+  - Preferred range depends on the weapon class and the bot's personality.
+- **Recovery in every state.** No progress for 0.5 s: sidestep toward the
+  open side and hop. Again: re-plan the path. A third time: pick a new
+  destination.
+- **Variation without randomness for its own sake.** Each bot has a
+  personality (aggression, caution, flank tendency, patience, reaction,
+  decision interval) that biases choices. Decisions run every 0.35–0.8 s per
+  bot and are staggered, not every frame.
+- **Diagnostics.** `?botdebug` in the URL (solo) shows role, state,
+  destination, stuck time and reason per bot, and draws paths in the world.
+  It is off unless requested. `BotDirector.debugState()` exposes the same
+  data for tests.
+
+Results (`docs/measurements/bots-after.txt`, same harness and window, 8
+seeds each):
+
+| Attackers, 5–25 s into a round | easy before → after | normal | hard |
+|---|---|---|---|
+| teammate within 3 m | 84% → 29% | 40% → 10% | 54% → 10% |
+| nearest teammate | 1.8 → 8.4 m | 5.9 → 12.3 m | 5.1 → 12.7 m |
+| map areas occupied | 1.39 → 2.28 | 1.98 → 2.75 | 2.09 → 3.12 |
+| biggest group | 3.7 → 1.9 | 2.4 → 1.4 | 2.6 → 1.5 |
+| lanes used per round | 1.51 → 2.05 | 1.59 → 2.05 | 1.41 → 2.16 |
+| stuck, bot-seconds per match | 153 → 10 | 46 → 13 | 6.7 → 9.6 |
+
+- **Defenders:** within 3 m 46% → 12% (easy) and 31% → 11% (normal).
+- **Round length:** 18 s → 34 s at normal; Attackers now stage before
+  pushing.
+- **Round outcomes:** Defenders win 30/58 rounds (easy), 31/58 (normal) and
+  7/47 (hard), against 22/58, 27/60 and 7/47 before. The first version
+  without rotations dropped Defender wins to 15/52 at normal, which is why
+  rotations were added.
+- **Cost:** about 30 µs of AI per tick for 10 bots (headless Node).
+
+Tests:
+- `src/shared/botAI.test.ts`, 12 tests covering A–G. Run against the old AI,
+  8 fail: B, C, F, F2, G 8v8 and E fail on behaviour; A and D can't run
+  because the old AI had no `debugState()`.
+- `tests/e2e/botai.mjs`, 5 checks: the overlay is shown only on request,
+  and bots spread out in a real browser match.
+
+Remaining:
+- Hard is still Attacker-sided (7/47), as it was before this work.
+- Stuck time at hard is slightly higher (6.7 → 9.6 bot-seconds per match,
+  about one second per round across 10 bots).
+- With no player collision, crossing paths still overlap visually for a
+  moment.
+- Nobody has played against these bots yet. Whether they *feel* human is a
+  manual test still to do.
