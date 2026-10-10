@@ -1,0 +1,20 @@
+Bomb defusal with bots on Depot (branch overhaul/m3-bomb), headless 5v5,
+first to 8 rounds, three seeds per difficulty. Counts per match.
+Measured 2026-10-10.
+
+easy seed 1: phase matchEnd score A4-D8 plants 6 defuses 4 drops 9 pickups 4 aborts 4 | Attackers eliminated the enemy: 4; Defenders eliminated the enemy: 4; The bomb has been defused: 4
+easy seed 2: phase matchEnd score A8-D7 plants 9 defuses 3 drops 11 pickups 7 aborts 9 | Defenders eliminated the enemy: 4; The bomb has been defused: 3; Attackers eliminated the enemy: 8
+easy seed 3: phase matchEnd score A8-D5 plants 7 defuses 2 drops 8 pickups 3 aborts 6 | Defenders eliminated the enemy: 3; Attackers eliminated the enemy: 8; The bomb has been defused: 2
+normal seed 1: phase matchEnd score A3-D8 plants 1 defuses 0 drops 10 pickups 2 aborts 2 | Defenders eliminated the enemy: 8; Attackers eliminated the enemy: 3
+normal seed 2: phase matchEnd score A8-D4 plants 1 defuses 1 drops 7 pickups 3 aborts 0 | The bomb has been defused: 1; Defenders eliminated the enemy: 3; Attackers eliminated the enemy: 8
+normal seed 3: phase matchEnd score A8-D7 plants 2 defuses 0 drops 9 pickups 1 aborts 0 | Defenders eliminated the enemy: 7; Attackers eliminated the enemy: 8
+hard seed 1: phase matchEnd score A8-D0 plants 1 defuses 0 drops 2 pickups 0 aborts 0 | Attackers eliminated the enemy: 8
+hard seed 2: phase matchEnd score A8-D4 plants 0 defuses 0 drops 7 pickups 2 aborts 0 | Defenders eliminated the enemy: 4; Attackers eliminated the enemy: 8
+hard seed 3: phase matchEnd score A8-D4 plants 0 defuses 0 drops 9 pickups 3 aborts 0 | Defenders eliminated the enemy: 4; Attackers eliminated the enemy: 8
+
+Reading: bots carry, plant, fetch dropped bombs and defuse. At normal and
+hard difficulty most rounds still end by elimination before a plant (the
+bomb carrier often dies on the way: "drops"), and no match had a bomb run
+its full fuse. Bot tactics around the objective (escorting the carrier,
+retake timing) are the obvious next tuning step. Not measured: how the
+mode plays for humans.

@@ -229,8 +229,39 @@ export class GameAudio {
     } else this.tone(this.sfx, t, 0.15, 0.15, 'square', 220, 180);
   }
 
+  /** The planted bomb's beep (positional; it speeds up as the fuse runs out). */
+  bombBeep(pos: Vec3): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = this.out(pos);
+    this.tone(dest, t, 0.09, 0.35, 'square', 1950, 1950);
+  }
+
+  /** Keypad presses while planting, or the clip being worked while defusing. */
+  bombAction(kind: 'plant' | 'defuse', pos?: Vec3): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = this.out(pos);
+    if (kind === 'plant') {
+      [0, 0.35, 0.7, 1.05, 1.4, 1.75, 2.1].forEach((at, i) => this.tone(dest, t + at, 0.07, 0.16, 'square', 1100 + (i % 3) * 180, 1100 + (i % 3) * 180));
+    } else {
+      this.noiseBurst(dest, t, 0.25, 0.3, 'bandpass', 2400, 2, 1200);
+      this.noiseBurst(dest, t + 0.3, 0.06, 0.35, 'bandpass', 3200, 4);
+    }
+  }
+
+  explosion(pos: Vec3, distance: number): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const dest = this.out(pos);
+    const near = 1 - Math.min(1, distance / 80);
+    this.noiseBurst(dest, t, 1.8, 1.6, 'lowpass', 1200 * (0.4 + near), 0.6, 60);
+    this.tone(dest, t, 1.2, 1.2, 'sine', 90, 28);
+    this.noiseBurst(dest, t + 0.25, 2.5, 0.5, 'lowpass', 400, 0.5, 50); // rumble / echo
+  }
+
   /** Radio-style announcement chirp. */
-  radio(kind: 'start' | 'win' | 'lose' | 'go'): void {
+  radio(kind: 'start' | 'win' | 'lose' | 'go' | 'planted' | 'defused'): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     this.noiseBurst(this.sfx, t, 0.08, 0.15, 'bandpass', 2000, 2);
@@ -239,6 +270,8 @@ export class GameAudio {
       go: [880, 880, 1320],
       win: [523, 659, 784, 1047],
       lose: [392, 330, 262],
+      planted: [988, 740, 988, 740],
+      defused: [659, 988, 1319],
     };
     seq[kind].forEach((f, i) => this.tone(this.sfx, t + 0.1 + i * 0.13, 0.16, 0.18, 'square', f, f));
   }

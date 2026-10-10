@@ -196,7 +196,7 @@ export class Room {
       case 'debug':
         // Test-only hook (CS_DEBUG=1). Never enabled in deployment config.
         if (this.debug) {
-          p.body.pos = { x: msg.x, y: 0, z: msg.z };
+          p.body.pos = { x: msg.x, y: this.sim.map.surfaceY(msg) + 0.02, z: msg.z };
           p.body.vel = { x: 0, y: 0, z: 0 };
           p.yaw = msg.yaw;
         }

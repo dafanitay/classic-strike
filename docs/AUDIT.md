@@ -177,3 +177,18 @@ the deployed build (solo is unaffected):
 Not measured: how the new layout plays for humans, frame rate on real
 hardware, and play between two separate computers.
 
+
+## Progress on branch `overhaul/m3-bomb` (roadmap item 4)
+
+| Change | Evidence |
+|---|---|
+| Bomb defusal: one Attacker carries the bomb; plant in a site (hold E, 3.2 s, standing still, can't shoot); 40 s fuse; defuse 10 s / 5 s with a kit; drop on death, pick up by walking over; explosion with distance falloff that hurts everyone; classic win conditions and money (plant/defuse +$300, +$800 planted-loss bonus) | `src/shared/bomb.test.ts` (13 tests) |
+| Movement lock while planting/defusing is computed by the same function on server and client; after completing, the lock holds until E is released, so prediction never drifts at the moment the bomb is planted | prediction test while planting: error < 1e-6 m (was 0.29 m before the use latch) |
+| HUD: plant/defuse progress bar, BOMB/KIT tag, planted indicator replaces the clock, hints, scoreboard gear; defuse kit in the buy menu; bomb model, beeps speeding up with the fuse, explosion | `tests/e2e/bomb.mjs` 14/14 with screenshots |
+| Online: bomb state, kit and plant/defuse progress in snapshots (protocol v2); plant through the real server seen by both clients | `tests/e2e/multiplayer.mjs` 20/20 (local server) |
+| Bots: carrier goes to the planned site and plants, nearest Attacker fetches a dropped bomb, Attackers guard a planted bomb, Defenders retake and defuse, Defenders buy kits | bot test; 9 headless matches in `docs/measurements/bomb-bots.txt` |
+
+Known limits: a carried bomb isn't drawn on the carrier's model (teammates
+see the carrier on the scoreboard); there's no way to drop or pass the bomb
+on purpose; bots plant mostly at easy difficulty, because at normal and
+hard the carrier usually dies on the way.

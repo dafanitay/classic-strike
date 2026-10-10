@@ -1,5 +1,5 @@
 import type { Team } from './map';
-import type { BuyItem, Phase, PlayerCmd, SimEvent, SimPlayer, Simulation } from './sim';
+import type { BombState, BuyItem, Phase, PlayerCmd, SimEvent, SimPlayer, Simulation } from './sim';
 import { EQUIPMENT } from './sim';
 import { BUYABLE, WEAPONS, type WeaponId, type WeaponSlot } from './weapons';
 
@@ -10,7 +10,7 @@ import { BUYABLE, WEAPONS, type WeaponId, type WeaponSlot } from './weapons';
  * server's Simulation and sent back in snapshots and events.
  */
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const SNAPSHOT_RATE = 20; // per second
 export const MAX_MESSAGE_BYTES = 4096;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -73,6 +73,21 @@ export interface PlayerSnap {
   py: number;
   sa: number;
   lh: number; // last hurt
+  kt: 0 | 1; // defuse kit
+  ac: 0 | 1 | 2; // action: none / planting / defusing
+  ae: number; // action end time
+  ul: 0 | 1; // use latch
+}
+
+/** The bomb, as every client sees it (including its carrier). */
+export interface BombSnap {
+  s: BombState['state'];
+  c: number;
+  p: [number, number, number];
+  st: BombState['site'];
+  pa: number;
+  ex: number;
+  df: number;
 }
 
 export interface Snapshot {
@@ -82,6 +97,7 @@ export interface Snapshot {
   round: number;
   roundStart: number;
   score: Record<Team, number>;
+  bomb: BombSnap;
   ack: number; // last cmd seq processed for the receiving player
   players: PlayerSnap[];
   events: SimEvent[];
@@ -111,7 +127,16 @@ export function encodePlayer(p: SimPlayer, exact = false): PlayerSnap {
     hp: p.health, ar: p.armor, hm: p.helmet ? 1 : 0, $: p.money, k: p.kills, d: p.deaths,
     w, cu: p.current, nf: r3(p.nextFire), rl: r3(p.reloadEnd), se: r3(p.switchEnd), sc: p.scope,
     pp: r3(p.punchPitch), py: r3(p.punchYaw), sa: r3(p.spreadAccum), lh: r2(p.lastHurt),
+    kt: p.kit ? 1 : 0, ac: p.action === 'plant' ? 1 : p.action === 'defuse' ? 2 : 0, ae: r3(p.actionEnd), ul: p.useLatch ? 1 : 0,
   };
+}
+
+export function encodeBomb(b: BombState): BombSnap {
+  return { s: b.state, c: b.carrier, p: [r3(b.pos.x), r3(b.pos.y), r3(b.pos.z)], st: b.site, pa: r3(b.plantedAt), ex: r3(b.explodeAt), df: b.defuser };
+}
+
+export function decodeBomb(s: BombSnap): BombState {
+  return { state: s.s, carrier: s.c, pos: { x: s.p[0], y: s.p[1], z: s.p[2] }, site: s.st, plantedAt: s.pa, explodeAt: s.ex, defuser: s.df };
 }
 
 /** @param selfId the receiving player, whose own body is sent unrounded. */
@@ -123,6 +148,7 @@ export function encodeSnapshot(sim: Simulation, ack: number, events: SimEvent[],
     round: sim.round,
     roundStart: r3(sim.roundStartTime),
     score: { ...sim.score },
+    bomb: encodeBomb(sim.bomb),
     ack,
     players: sim.players.map((p) => encodePlayer(p, p.id === selfId)),
     events,
@@ -162,6 +188,10 @@ export function applyPlayer(p: SimPlayer, s: PlayerSnap, includeBody = true): vo
   p.punchYaw = s.py;
   p.spreadAccum = s.sa;
   p.lastHurt = s.lh;
+  p.kit = !!s.kt;
+  p.action = s.ac === 1 ? 'plant' : s.ac === 2 ? 'defuse' : null;
+  p.actionEnd = s.ae;
+  p.useLatch = !!s.ul;
 }
 
 // ------------------------------------------------------------ validation
@@ -225,6 +255,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
           altFire: c.altFire === true,
           reload: c.reload === true,
           slot,
+          use: c.use === true,
         },
       };
     }

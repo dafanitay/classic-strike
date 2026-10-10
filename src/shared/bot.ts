@@ -297,6 +297,11 @@ export class BotDirector {
       // ---- no visible enemy
       b.targetId = null;
       if (b.mode === 'cover') b.mode = 'hunt';
+      // With the bomb ticking, Defenders go for it instead of chasing noises.
+      if (p.team === 'D' && sim.bomb.state === 'planted') {
+        b.lastKnown = null;
+        if (b.mode === 'hunt') b.mode = 'objective';
+      }
       if (b.lastKnown && now - b.lastKnownAt < 7) {
         if (b.mode !== 'hunt' || !b.goal || dist2D(b.goal, b.lastKnown) > 3) this.setGoal(p, b, b.lastKnown, 'hunt');
       } else if (b.mode === 'hunt') {
@@ -318,6 +323,21 @@ export class BotDirector {
         }
       } else if (b.holdLook !== null) {
         lookYaw = b.holdLook + Math.sin(now * 0.7 + p.id) * 0.35;
+      }
+      // Fetching a dropped bomb: the path can end at a cell centre short of
+      // the bomb (near walls), so cover the last few metres straight at it.
+      const bomb = sim.bomb;
+      if (p.team === 'A' && bomb.state === 'dropped' && !b.path.length && b.goal && dist2D(b.goal, bomb.pos) < 0.5) {
+        const d = dist2D(p.body.pos, bomb.pos);
+        if (d > 0.3 && d < 4) {
+          moveDir = { x: bomb.pos.x - p.body.pos.x, y: 0, z: bomb.pos.z - p.body.pos.z };
+          lookYaw = anglesFromDir(moveDir).yaw;
+        }
+      }
+      // Plant or defuse when standing in the right place with nobody in view.
+      if (sim.canPlant(p) !== null || sim.canDefuse(p)) {
+        cmd.use = true;
+        moveDir = null;
       }
     }
 
@@ -413,6 +433,7 @@ export class BotDirector {
     if (sim.phase === 'freeze') return;
     const plan = this.plans[p.team];
     const now = sim.time;
+    if (this.planBomb(p, b)) return;
 
     // Act on fresh team intel.
     if (plan.intel && now - plan.intel.time < 6 && (!b.goal || dist2D(b.goal, plan.intel.pos) > 6)) {
@@ -451,6 +472,53 @@ export class BotDirector {
         this.setGoal(p, b, choice, 'objective');
       }
     }
+  }
+
+  /**
+   * Bomb-specific goals. Returns true when it set (or kept) this bot's goal:
+   * the carrier heads for the planned site and stays there to plant; the
+   * nearest Attacker fetches a dropped bomb; once planted, Attackers guard
+   * it and Defenders go to it to defuse.
+   */
+  private planBomb(p: SimPlayer, b: Brain): boolean {
+    const sim = this.sim;
+    const bomb = sim.bomb;
+    const now = sim.time;
+    const near = (g: Vec3 | null, t: Vec3) => !!g && dist2D(g, t) < 0.5;
+    if (bomb.state === 'planted' && bomb.site) {
+      if (p.team === 'D') {
+        if (!near(b.goal, bomb.pos)) this.setGoal(p, b, { ...bomb.pos }, 'objective');
+        b.holdLook = null;
+        return true;
+      }
+      if (b.path.length || now < b.holdUntil) return true;
+      const spot = this.randomCellIn(sim.map.def.bombsites[bomb.site], 1);
+      const entry = this.entryPoint(bomb.site, 'D');
+      this.setGoal(p, b, spot, 'hold');
+      b.holdLook = anglesFromDir({ x: entry.x - spot.x, y: 0, z: entry.z - spot.z }).yaw;
+      b.holdUntil = now + 6 + sim.random() * 8;
+      return true;
+    }
+    if (p.team !== 'A') return false;
+    if (bomb.state === 'dropped') {
+      let fetcher: SimPlayer | null = null;
+      for (const q of sim.players) {
+        if (q.team !== 'A' || !q.alive || !q.isBot) continue;
+        if (!fetcher || dist2D(q.body.pos, bomb.pos) < dist2D(fetcher.body.pos, bomb.pos)) fetcher = q;
+      }
+      if (fetcher === p) {
+        if (!near(b.goal, bomb.pos)) this.setGoal(p, b, { ...bomb.pos }, 'objective');
+        return true;
+      }
+      return false;
+    }
+    if (bomb.state === 'carried' && bomb.carrier === p.id) {
+      const site = sim.map.def.bombsites[this.plans.A.site];
+      if (sim.map.inRect(p.body.pos, site)) return true; // there: think() plants
+      if (!b.goal || !sim.map.inRect(b.goal, site) || !b.path.length) this.setGoal(p, b, this.randomCellIn(site, 0), 'objective');
+      return true;
+    }
+    return false;
   }
 
   /** Where the given team's approach path enters a bombsite (cached). */
@@ -567,6 +635,8 @@ export class BotDirector {
     } else if (p.armor < 50 && p.money >= 650) {
       order.push(p.money >= 1000 ? 'helmet' : 'kevlar');
     }
+    // Defenders who can spare it carry a kit (it halves the defuse time).
+    if (p.team === 'D' && !p.kit && this.difficulty !== 'easy') order.push('defuser');
     for (const item of order) this.sim.buy(p, item as Parameters<Simulation['buy']>[1]);
   }
 

@@ -5,7 +5,7 @@ import type { Settings } from '../settings';
 import { BotDirector, type Difficulty } from '../shared/bot';
 import { buildMap, type MapDef, type Team } from '../shared/map';
 import { PHYS, eyeHeight } from '../shared/movement';
-import { Simulation, TEAM_NAME, TICK_DT, emptyCmd, type BuyItem, type SimEvent, type SimPlayer } from '../shared/sim';
+import { BOMB, Simulation, TEAM_NAME, TICK_DT, emptyCmd, type BuyItem, type SimEvent, type SimPlayer } from '../shared/sim';
 import { angleDiff, lerp, type Vec3 } from '../shared/vec';
 import { WEAPONS } from '../shared/weapons';
 import { spreadToPixels } from '../ui/crosshair';
@@ -72,6 +72,7 @@ export class GameSession {
   private stepOffset = 0;
   private lastViewY = 0;
   private lastViewGrounded = false;
+  private lastBeep = 0;
   private deathTime = -1;
   private killerId = 0;
   private spectateId = 0;
@@ -543,8 +544,41 @@ export class GameSession {
         case 'buy':
           if (ev.player === me.id) this.audio.ui('buy');
           break;
+        case 'bombPickup':
+          if (ev.player === me.id) {
+            this.hud.message('You have the bomb', 'Plant it at site A or B: stand inside the site and hold E', null, now, 3);
+            this.audio.ui('buy');
+          }
+          break;
+        case 'bombDrop':
+          if (me.team === 'A') this.hud.notice(`${sim.getPlayer(ev.player)?.name ?? 'Someone'} dropped the bomb`, now);
+          break;
+        case 'plantStart':
+        case 'defuseStart': {
+          const p = sim.getPlayer(ev.player);
+          this.audio.bombAction(ev.type === 'plantStart' ? 'plant' : 'defuse', p === me ? undefined : p?.body.pos);
+          break;
+        }
+        case 'planted':
+          this.hud.message('The bomb has been planted', `Site ${ev.site} — ${me.team === 'A' ? 'defend it until it explodes' : 'find it and defuse it (hold E)'}`, 'A', now, 3.5);
+          this.audio.radio('planted');
+          this.lastBeep = sim.time;
+          break;
+        case 'defused':
+          this.audio.radio('defused');
+          break;
+        case 'exploded': {
+          const d = Math.hypot(ev.pos.x - eye.x, ev.pos.y - eye.y, ev.pos.z - eye.z);
+          this.audio.explosion(ev.pos, d);
+          this.renderer.bomb.explode(ev.pos);
+          for (let i = 0; i < 14; i++) {
+            const p = { x: ev.pos.x + (Math.random() - 0.5) * 5, y: ev.pos.y + 0.5 + Math.random() * 4, z: ev.pos.z + (Math.random() - 0.5) * 5 };
+            this.renderer.effects.puff(p, i < 6 ? 0xffa040 : 0x5a5248, 1.2 + Math.random(), 3 + Math.random() * 3);
+          }
+          break;
+        }
         case 'roundStart':
-          this.hud.message(`Round ${ev.round}`, `Buy time — press B. ${TEAM_NAME[me.team]}: ${me.team === 'A' ? 'eliminate the Defenders' : 'hold the sites, eliminate the Attackers'}.`, null, now, 3);
+          this.hud.message(`Round ${ev.round}`, `Buy time — press B. ${TEAM_NAME[me.team]}: ${!sim.config.bomb ? (me.team === 'A' ? 'eliminate the Defenders' : 'hold the sites, eliminate the Attackers') : me.team === 'A' ? 'plant the bomb at A or B, or eliminate the Defenders' : 'stop the bomb plant, or defuse it'}.`, null, now, 3);
           this.audio.radio('start');
           this.renderer.effects.clearDecals();
           this.deathTime = -1;
@@ -700,6 +734,18 @@ export class GameSession {
     r.setFov(fov);
     this.input.zoomSensitivity = fov / this.settings.fov;
     r.muzzleLight.intensity = Math.max(0, r.muzzleLight.intensity - dt * 120);
+    // The planted bomb beeps faster as the fuse runs out (once a second at
+    // first, ~8 per second in the last seconds).
+    const bomb = sim.bomb;
+    if (bomb.state === 'planted' && sim.phase === 'live') {
+      const left = Math.max(0, bomb.explodeAt - sim.time);
+      const interval = Math.max(0.12, Math.min(1, left / BOMB.fuse) * 1.0);
+      if (sim.time - this.lastBeep >= interval) {
+        this.lastBeep = sim.time;
+        this.audio.bombBeep(bomb.pos);
+      }
+    }
+    r.bomb.update(bomb, sim.time, this.lastBeep, dt);
     r.effects.update(dt);
     this.audio.setListener(cam.position, cam.rotation.y);
 
@@ -717,6 +763,11 @@ export class GameSession {
     const spreadPx = spreadToPixels(spread, vfov, window.innerHeight);
     let hint = '';
     if (me.alive && sim.canBuy(me) && !this.hud.buyOpen) hint = 'Press B to open the buy menu';
+    else if (me.alive && sim.phase === 'live' && me.action === null) {
+      if (sim.canPlant(me)) hint = 'Hold E to plant the bomb';
+      else if (sim.canDefuse(me)) hint = me.kit ? 'Hold E to defuse (5 s with your kit)' : 'Hold E to defuse (10 s — a kit halves it)';
+      else if (sim.bomb.state === 'carried' && sim.bomb.carrier === me.id) hint = 'You have the bomb — take it to site A or B';
+    }
     if (sim.phase === 'warmup') {
       hint = this.net
         ? `Waiting for your friend — room code ${this.net.room}. Press Esc for the invite link.`

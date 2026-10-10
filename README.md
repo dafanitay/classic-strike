@@ -1,7 +1,8 @@
 # CLASSIC STRIKE
 
 A browser tactical FPS inspired by the round-based shooters of the early 2000s:
-buy phase, economy, learnable recoil, one life per round. All code, the map,
+bomb plant and defuse, buy phase, economy, learnable recoil, one life per
+round. All code, the map,
 models, textures and sounds are original (textures and audio are generated
 procedurally at runtime). Not affiliated with Valve or any other publisher.
 
@@ -27,18 +28,38 @@ Firefox), keyboard and mouse.
 | `npm run e2e:feedback` | Browser checks for crosshair settings, hit marker, damage direction (needs `npm run dev`) |
 | `npm run e2e:controls` | Weapon selection: keys 1/2/3 and numpad only; simulated Magic Mouse and wheel scrolling must never switch (needs `npm run dev`) |
 | `npm run e2e:elevation` | Walks up and down stairs with real key input and screenshots each raised area (needs `npm run dev`) |
+| `npm run e2e:bomb` | Plants with the E key, checks the HUD and fuse, defuses, and screenshots each step (needs `npm run dev`) |
 | `npm run e2e:mp` | Two-browser online test (needs `npm run build && PORT=8090 CS_DEBUG=1 npm start`, then `node tests/e2e/multiplayer.mjs http://127.0.0.1:8090`) |
 
 ## Controls
 
 WASD move · mouse aim · LMB fire · RMB scope / heavy stab · Space jump ·
 Shift walk (silent) · C crouch · R reload · 1/2/3 weapons ·
-B buy menu · Tab scoreboard · Esc pause (releases the mouse).
+B buy menu · E (hold) plant / defuse · Tab scoreboard · Esc pause (releases the mouse).
 
 Crouch is on **C**, not Ctrl, because Ctrl+W closes the browser tab.
 Weapons switch only with **1 / 2 / 3** (top row or numpad): the mouse wheel
 does nothing, because touch-surface mice such as the Apple Magic Mouse send
 wheel events whenever a finger moves on them.
+
+## Bomb defusal
+
+One Attacker starts each round with the bomb. Standing inside site A or B,
+holding **E** for 3.2 s plants it (you stand still while planting); the bomb
+then explodes after 40 s. A Defender at the bomb holds **E** to defuse it:
+10 s, or 5 s with a defuse kit ($400, Defenders only, lost on death).
+Letting go cancels and the timer starts over.
+
+- Attackers win by detonating the bomb or eliminating the Defenders.
+- Defenders win by defusing, eliminating the Attackers before a plant, or
+  running out the clock without a plant. Once the bomb is down, dead
+  Attackers no longer end the round.
+- If the carrier dies the bomb drops; any Attacker picks it up by walking
+  over it.
+- Money: planter +$300, defuser +$300; Attackers who planted but lost still
+  get +$800 each on top of the loss bonus. The blast hurts everyone,
+  Attackers included: lethal within about 7–11 m (depending on armour),
+  harmless beyond 20 m.
 
 ## Architecture
 

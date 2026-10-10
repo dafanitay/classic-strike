@@ -1,5 +1,5 @@
 import { stepMovement } from '../shared/movement';
-import { applyPlayer, type PlayerSnap, type Snapshot } from '../shared/protocol';
+import { applyPlayer, decodeBomb, type PlayerSnap, type Snapshot } from '../shared/protocol';
 import { TICK_DT, type PlayerCmd, type SimPlayer, type Simulation } from '../shared/sim';
 import { angleDiff, lerp, type Vec3 } from '../shared/vec';
 
@@ -60,13 +60,11 @@ export class NetMirror {
   }
 
   private applyMove(me: SimPlayer, cmd: PlayerCmd): void {
-    const frozen = this.sim.phase === 'freeze' || this.sim.phase === 'matchEnd';
     me.yaw = cmd.yaw;
     me.pitch = cmd.pitch;
-    const input = frozen
-      ? { forward: 0, side: 0, jump: false, crouch: cmd.crouch, walk: false, yaw: cmd.yaw }
-      : { forward: cmd.forward, side: cmd.side, jump: cmd.jump, crouch: cmd.crouch, walk: cmd.walk, yaw: cmd.yaw };
-    stepMovement(this.sim.map.world, me.body, input, this.sim.maxSpeedOf(me), TICK_DT);
+    // Same input rules as the server (freeze time, standing still while
+    // planting / defusing), so prediction stays exact.
+    stepMovement(this.sim.map.world, me.body, this.sim.movementInput(me, cmd), this.sim.maxSpeedOf(me), TICK_DT);
   }
 
   /** Applies an authoritative snapshot. Returns ids that appeared/disappeared. */
@@ -82,6 +80,7 @@ export class NetMirror {
     sim.round = s.round;
     sim.roundStartTime = s.roundStart;
     sim.score = { ...s.score };
+    sim.bomb = decodeBomb(s.bomb);
 
     const added: number[] = [];
     const removed: number[] = [];

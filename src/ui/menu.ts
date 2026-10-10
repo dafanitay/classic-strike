@@ -325,6 +325,7 @@ export class Menus {
       ['R', 'Reload'],
       ['1 / 2 / 3', 'Primary / pistol / knife (the mouse wheel does nothing)'],
       ['B', 'Buy menu (spawn zone, buy time)'],
+      ['E (hold)', 'Plant the bomb in a site / defuse it'],
       ['Tab (hold)', 'Scoreboard'],
       ['Esc', 'Pause and release the mouse'],
     ];
