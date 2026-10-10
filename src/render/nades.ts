@@ -132,6 +132,7 @@ export class NadeView {
     this.geo.dispose();
     Object.values(this.mats).forEach((m) => m.dispose());
     for (const c of this.clouds.values()) c.group.children.forEach((ch) => ((ch as THREE.Sprite).material as THREE.Material).dispose());
+    this.smokeMat.map?.dispose();
     this.smokeMat.dispose();
   }
 }

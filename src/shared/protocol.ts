@@ -266,7 +266,7 @@ export function parseClientMsg(raw: string): ClientMsg | null {
       const c = m.cmd as Record<string, unknown> | undefined;
       if (!isNum(m.seq) || !c || typeof c !== 'object') return null;
       if (!isNum(c.yaw) || !isNum(c.pitch) || !isNum(c.forward) || !isNum(c.side)) return null;
-      const slot = c.slot === 1 || c.slot === 2 || c.slot === 3 ? c.slot : 0;
+      const slot = c.slot === 1 || c.slot === 2 || c.slot === 3 || c.slot === 4 ? c.slot : 0;
       return {
         t: 'cmd',
         seq: Math.floor(m.seq),

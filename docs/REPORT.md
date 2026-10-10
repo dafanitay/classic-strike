@@ -16,9 +16,9 @@ https://classic-strike-itay.fly.dev.** Each deploy ran the workflow's own
 checks against the live URL (solo, plus two browsers online), and they
 passed.
 
-**Nobody has played it with a human at the keyboard, on real GPU hardware
-or on real speakers.** Every "verified" below means automated tests or
-headless measurements.
+**Apart from the owner's one short playtest, nobody has played it with a
+human at the keyboard, on real GPU hardware or on real speakers.** Every
+"verified" below means automated tests or headless measurements.
 
 ## What shipped
 
@@ -32,7 +32,7 @@ headless measurements.
 | #8 | Bomb on the carrier's back, G drops it; build label and sound status; wall-seam fix |
 | #9 | 22 guns, one for every classic role; category buy menu |
 | #10 | Grenades (HE, flashbang, smoke); bots use them |
-| (this branch) | K4 price; damage column on the scoreboard; money pop-ups; buy-menu stats; distinct SMGs; fixes from the grenade review |
+| (this branch) | Slower pace (80% movement speed), calmer bot dodging; K4 price; damage column on the scoreboard; money pop-ups; buy-menu stats; distinct SMGs; fixes from the grenade review |
 
 ## Mission A: bots
 
@@ -91,8 +91,10 @@ headless measurements.
 
 ## Known gaps and suggestions
 
-- **No human playtest yet.** The most useful next step is 15 minutes of
-  play and a list of whatever feels off.
+- **One short human playtest so far.** It found the game too fast and
+  targets too hard to hit, and both are fixed (see "Game pace" in
+  `docs/GAMEPLAY_AUDIT.md`). More play, and a list of whatever still feels
+  off, is the most useful next step.
 - **"I don't hear the new sounds":** Settings now shows whether the
   enhanced sound set loaded, or why not. The cause needs the player's
   browser and that line to pin down.

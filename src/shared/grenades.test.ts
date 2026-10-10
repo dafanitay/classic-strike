@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { throwPitch } from './bot';
+import { BotDirector, throwPitch } from './bot';
 import { buildMap } from './map';
 import { DEPOT } from './maps/depot';
 import { decodeBomb, encodeSnapshot, applyNades, applyPlayer, encodePlayer, parseClientMsg } from './protocol';
@@ -90,6 +90,9 @@ describe('grenades: buying and carrying', () => {
 
   it('online: grenade purchases pass the parser, and counts and blindness survive a snapshot', () => {
     expect(parseClientMsg(JSON.stringify({ t: 'buy', item: 'flash' }))).toEqual({ t: 'buy', item: 'flash' });
+    // Online, key 4 has to reach the server or nobody can take a grenade out.
+    const cmd = parseClientMsg(JSON.stringify({ t: 'cmd', seq: 1, cmd: { ...emptyCmd(), slot: 4 } }));
+    expect(cmd && cmd.t === 'cmd' && cmd.cmd.slot).toBe(4);
     const { sim, a } = live();
     sim.buy(a, 'flash');
     a.blindFull = 12.5;
@@ -229,5 +232,23 @@ describe('grenades: effects', () => {
     applyNades(client, encodeSnapshot(sim, 0, []));
     expect(client.nadesInFlight.length).toBe(0);
     expect(client.smokes.length).toBe(1);
+  });
+});
+
+describe('grenades: bots', () => {
+  it('a bot drops its throw plan as soon as it has someone to shoot', () => {
+    const sim = new Simulation(map, { freezeTime: 0.05, bomb: false }, 4);
+    const bots = new BotDirector(sim, 'normal');
+    const bot = sim.addPlayer(BotDirector.botName('A', 0), 'A', true);
+    const enemy = sim.addPlayer('d', 'D', false);
+    goLive(sim);
+    bot.nades.flash = 1;
+    sim.syncNadeSlot(bot);
+    bots.update(); // first update starts the round and sets up the brains
+    const brain = (bots as unknown as { brain(p: SimPlayer): { throwPlan: unknown; targetId: number | null } }).brain(bot);
+    brain.throwPlan = { type: 'flash', target: { ...enemy.body.pos }, until: sim.time + 10, fireToggle: false };
+    brain.targetId = enemy.id;
+    bots.update();
+    expect(brain.throwPlan).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { rayAabb } from './collision';
 import type { MapData, Team } from './map';
-import { PHYS, bodyHeight, eyeHeight, makeBody, stepMovement, type MoveBody, type MoveInput } from './movement';
+import { PACE, PHYS, bodyHeight, eyeHeight, makeBody, stepMovement, type MoveBody, type MoveInput } from './movement';
 import { expandPattern, patternStep, type RecoilOffset } from './recoil';
 import { add, clamp, dirFromAngles, dist, makeRng, scale, type Vec3 } from './vec';
 import {
@@ -413,7 +413,7 @@ export class Simulation {
    * many are left as its "magazine"), moves on to another kind when one runs
    * out, and disappears when none are left.
    */
-  private syncNadeSlot(p: SimPlayer): void {
+  syncNadeSlot(p: SimPlayer): void {
     if (p.nades[p.nadeSel] <= 0) p.nadeSel = NADE_TYPES.find((t) => p.nades[t] > 0) ?? p.nadeSel;
     if (p.nades[p.nadeSel] > 0) {
       p.weapons[4] = { id: p.nadeSel, mag: p.nades[p.nadeSel], reserve: 0 };
@@ -463,8 +463,8 @@ export class Simulation {
 
   maxSpeedOf(p: SimPlayer): number {
     const def = this.weaponOf(p);
-    if (p.scope > 0 && def.scope) return def.scope.scopedSpeed;
-    return def.maxSpeed;
+    if (p.scope > 0 && def.scope) return def.scope.scopedSpeed * PACE;
+    return def.maxSpeed * PACE;
   }
 
   /** Current cone half-angle for the active weapon. */
@@ -804,9 +804,9 @@ export class Simulation {
       const speed = moved / TICK_DT;
       if (speed > 1.5) {
         p.stepAccum += moved;
-        if (p.stepAccum > 2.1) {
+        if (p.stepAccum > 2.1 * PACE) {
           p.stepAccum = 0;
-          this.events.push({ type: 'step', player: p.id, pos: { ...p.body.pos }, walk: speed < 150 * 0.0254 });
+          this.events.push({ type: 'step', player: p.id, pos: { ...p.body.pos }, walk: speed < 150 * 0.0254 * PACE });
         }
       }
     }

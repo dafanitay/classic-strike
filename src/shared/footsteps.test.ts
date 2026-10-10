@@ -29,7 +29,7 @@ describe('footsteps come from actual movement', () => {
     expect(run((y) => ({ ...emptyCmd(y, 0), forward: 1 }), 3, true)).toHaveLength(0);
   });
 
-  it('running: a step about every 2.1 m (~3 per second), audible to others', () => {
+  it('running: a step about every 1.7 m (~3 per second), audible to others', () => {
     const steps = run((y) => ({ ...emptyCmd(y, 0), forward: 1 }), 3);
     expect(steps.length).toBeGreaterThanOrEqual(7);
     expect(steps.length).toBeLessThanOrEqual(10);

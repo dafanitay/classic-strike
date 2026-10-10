@@ -11,6 +11,14 @@ import type { Vec3 } from './vec';
  */
 const U = 0.0254;
 
+/**
+ * Game pace: every ground speed is the classic value times this. At the
+ * original 1:1 speeds the owner found the game too fast and moving targets
+ * too hard to hit (2026-10 playtest feedback), so everything runs at 80%:
+ * 5.1 m/s running instead of 6.35. Weapon speed ratios are unchanged.
+ */
+export const PACE = 0.8;
+
 export const PHYS = {
   gravity: 800 * U,
   jumpSpeed: Math.sqrt(2 * 800 * 45) * U, // reaches a 45-unit jump apex
@@ -19,7 +27,7 @@ export const PHYS = {
   accelerate: 5,
   airAccelerate: 10,
   airWishCap: 30 * U,
-  maxSpeed: 250 * U,
+  maxSpeed: 250 * U * PACE,
   /** Ledges up to this height are climbed by walking (classic 18 units). */
   stepHeight: 18 * U,
   walkScale: 0.52,

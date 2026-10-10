@@ -29,7 +29,8 @@ it, or **[A]** an assumption (not yet measured)._
   aiming is independent of frame rate. 0.022°/count × sensitivity. Lock
   loss → pause (solo). [V]
 - **D. Movement / collision** — GoldSrc-style pmove (friction, stop speed,
-  accel 5, air-accel 10 with 0.76 m/s air cap, 45-unit jump, crouch, walk),
+  accel 5, air-accel 10 with 0.76 m/s air cap, 45-unit jump, crouch, walk;
+  ground speeds have since been scaled to 80%, see `GAMEPLAY_AUDIT.md`),
   fixed 60 Hz. AABB world, axis-separated resolution against previous
   position. **No step-up**, so no stairs/ramps; map is a single flat floor.
   **No player–player collision.** [V]

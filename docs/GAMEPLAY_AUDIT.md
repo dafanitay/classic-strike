@@ -283,3 +283,29 @@ their main rifle now comes a round earlier, as often as the Attackers'
 does. The owner left this decision to engineering ("do it however you
 think serves me best"). This was the smallest economy change, and it
 touches only the K4's price.
+
+### Game pace: 80% movement speed, calmer bot dodging
+
+The owner's first playtest found the game too fast: "players move too
+fast, and that makes them very hard to hit". Movement had been the
+classic speeds 1:1 (6.35 m/s running). Two changes:
+
+- **All ground speeds × 0.8** (`PACE` in `src/shared/movement.ts`). Running
+  is now 5.1 m/s. Ratios between weapons are unchanged: a knife still
+  outruns a rifle by the same factor. Acceleration scales with the target
+  speed, so reaching full speed takes the same time. The moving-spread
+  penalty and footstep cadence are scaled to match: full penalty at a full
+  run, about 3 steps a second.
+- **Normal bots dodge at walking pace** (Shift) instead of a full run.
+  Each dodge lasts 0.5–1.2 s (was 0.35–0.95 s), so their direction
+  changes less often. Hard bots still strafe at a full run. Easy bots
+  don't strafe.
+
+Re-measured (Defender round wins, 8 matches each, 5v5, first to 8):
+
+| | normal | hard |
+|---|---|---|
+| before (K4 at $2700) | 38% | 36% |
+| pace 0.8 + walking dodge | 41% (35/86) | 43% (41/96) |
+
+Both are closer to even than before.
