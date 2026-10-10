@@ -130,7 +130,7 @@ const painters: Record<string, { size: number; world: number; paint: Painter }> 
     size: 256, world: 4,
     paint: (g, s, r) => {
       // Mortar first, then blocks inset from it.
-      g.fillStyle = '#7d6648';
+      g.fillStyle = '#8f7654';
       g.fillRect(0, 0, s, s);
       const rows = 8;
       const h = s / rows;
