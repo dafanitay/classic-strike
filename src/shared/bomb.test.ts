@@ -204,6 +204,42 @@ describe('bomb: after the plant', () => {
   });
 });
 
+describe('bomb: players leaving mid-round', () => {
+  it('a defuser who disconnects or switches team frees the bomb for the next Defender', () => {
+    for (const how of ['leave', 'team'] as const) {
+      const { sim, a1, d1, d2 } = live();
+      plantAt(sim, a1);
+      const at = map.cellOf(sim.bomb.pos);
+      place(sim, d1, at.x, at.z, 0.5);
+      place(sim, d2, at.x, at.z, -0.5);
+      run(sim, 1, new Map([[d1, use()]]));
+      expect(sim.bomb.defuser).toBe(d1.id);
+      if (how === 'leave') sim.removePlayer(d1.id);
+      else sim.setTeam(d1, 'A');
+      expect(sim.bomb.defuser, how).toBe(0);
+      run(sim, BOMB.defuseTime + 0.2, new Map([[d2, use()]]));
+      expect(sim.bomb.state, how).toBe('defused');
+    }
+  });
+
+  it('a team emptying out sends the game back to warmup without a leftover bomb', () => {
+    const { sim, a1, d1, d2 } = live();
+    plantAt(sim, a1);
+    sim.removePlayer(d1.id);
+    sim.removePlayer(d2.id);
+    run(sim, 6); // round ends, the next one can't start without Defenders
+    expect(sim.phase).toBe('warmup');
+    expect(sim.bomb.state).toBe('none');
+  });
+
+  it('switching to the Attackers drops a defuse kit', () => {
+    const { sim, d1 } = live();
+    d1.kit = true;
+    sim.setTeam(d1, 'A');
+    expect(d1.kit).toBe(false);
+  });
+});
+
 describe('bomb: rules and economy', () => {
   it('no plant before the clock runs out: Defenders win', () => {
     const { sim } = live({ roundTime: 2 });

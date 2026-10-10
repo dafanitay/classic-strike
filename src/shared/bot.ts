@@ -324,6 +324,16 @@ export class BotDirector {
       } else if (b.holdLook !== null) {
         lookYaw = b.holdLook + Math.sin(now * 0.7 + p.id) * 0.35;
       }
+      // Fetching a dropped bomb: the path can end at a cell centre short of
+      // the bomb (near walls), so cover the last few metres straight at it.
+      const bomb = sim.bomb;
+      if (p.team === 'A' && bomb.state === 'dropped' && !b.path.length && b.goal && dist2D(b.goal, bomb.pos) < 0.5) {
+        const d = dist2D(p.body.pos, bomb.pos);
+        if (d > 0.3 && d < 4) {
+          moveDir = { x: bomb.pos.x - p.body.pos.x, y: 0, z: bomb.pos.z - p.body.pos.z };
+          lookYaw = anglesFromDir(moveDir).yaw;
+        }
+      }
       // Plant or defuse when standing in the right place with nobody in view.
       if (sim.canPlant(p) !== null || sim.canDefuse(p)) {
         cmd.use = true;

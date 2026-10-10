@@ -334,13 +334,16 @@ export class Simulation {
   removePlayer(id: number): void {
     const i = this.players.findIndex((p) => p.id === id);
     if (i < 0) return;
+    this.stopAction(this.players[i]);
     this.dropBomb(this.players[i]);
     this.players.splice(i, 1);
   }
 
   setTeam(p: SimPlayer, team: Team): void {
     if (p.team === team) return;
+    this.stopAction(p);
     this.dropBomb(p);
+    p.kit = false;
     p.team = team;
     p.alive = false;
     p.respawnAt = this.time + 1;
@@ -534,6 +537,7 @@ export class Simulation {
   startRound(): void {
     if (this.teamSize('A') === 0 || this.teamSize('D') === 0) {
       this.phase = 'warmup';
+      this.bomb = { state: 'none', carrier: 0, pos: { x: 0, y: 0, z: 0 }, site: null, plantedAt: 0, explodeAt: 0, defuser: 0 };
       for (const p of this.players) if (!p.alive) p.respawnAt = this.time;
       return;
     }
@@ -783,6 +787,14 @@ export class Simulation {
     }
   }
 
+  /** Cancels a plant/defuse in progress, freeing the bomb for another defuser. */
+  private stopAction(p: SimPlayer): void {
+    if (this.bomb.defuser === p.id) this.bomb.defuser = 0;
+    p.action = null;
+    p.actionEnd = 0;
+    p.useLatch = false;
+  }
+
   /** Drops the bomb where its carrier stands (on death, leaving, team change). */
   private dropBomb(p: SimPlayer): void {
     if (this.bomb.state !== 'carried' || this.bomb.carrier !== p.id) return;
@@ -1027,9 +1039,7 @@ export class Simulation {
       victim.respawnAt = this.time + 2;
       victim.scope = 0;
       victim.kit = false;
-      if (victim.action === 'defuse' && this.bomb.defuser === victim.id) this.bomb.defuser = 0;
-      victim.action = null;
-      victim.actionEnd = 0;
+      this.stopAction(victim);
       this.dropBomb(victim);
       if (attacker && attacker !== victim) {
         if (attacker.team !== victim.team) {
