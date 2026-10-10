@@ -55,6 +55,14 @@ cue (clear within a few metres, gone past ~32 m), gunfire carries across
 the map. A wall between you and a sound muffles it. Walking (Shift) is
 silent to others, and crouch-walking makes no footsteps.
 
+Gunshots and bullet impacts are designed in layers (crack, body, low
+thump, the action cycling, a short echo off the walls), rendered once when
+the game starts and played back with slight variation per shot. Each gun
+has its own character; distant shots arrive duller with a separate echo.
+Bullets are heard where they land: stone, wood, the occasional ricochet, a
+dull thud on a body and a metallic ping on a headshot. Everything is
+synthesised in code: there are no recorded or third-party sound files.
+
 ## Bomb defusal
 
 One Attacker starts each round with the bomb. Standing inside site A or B,

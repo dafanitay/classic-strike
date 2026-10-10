@@ -12,7 +12,7 @@ import type { Vec3 } from '../shared/vec';
  * The curve is 1 inside `ref`, then falls as (ref/d)^rolloff and fades
  * smoothly to exactly 0 at `max` (no sudden cut-off).
  */
-export type SoundKind = 'footstep' | 'land' | 'gunshot' | 'knife' | 'reload' | 'death' | 'bomb' | 'explosion' | 'action';
+export type SoundKind = 'footstep' | 'land' | 'gunshot' | 'impact' | 'knife' | 'reload' | 'death' | 'bomb' | 'explosion' | 'action';
 
 export interface Profile {
   ref: number;
@@ -28,6 +28,8 @@ export interface Profile {
 export const PROFILES: Record<SoundKind, Profile> = {
   footstep: { ref: 2, max: 32, rolloff: 1.15, occludedGain: 0.5, occludedCutoff: 900, priority: 1 },
   land: { ref: 2, max: 28, rolloff: 1.15, occludedGain: 0.5, occludedCutoff: 900, priority: 1 },
+  // Bullets hitting walls, crates and players: a mid-range cue.
+  impact: { ref: 2, max: 40, rolloff: 1.1, occludedGain: 0.5, occludedCutoff: 1000, priority: 1 },
   reload: { ref: 1.5, max: 16, rolloff: 1.2, occludedGain: 0.45, occludedCutoff: 900, priority: 1 },
   knife: { ref: 1.5, max: 18, rolloff: 1.2, occludedGain: 0.45, occludedCutoff: 900, priority: 2 },
   action: { ref: 2, max: 22, rolloff: 1.1, occludedGain: 0.5, occludedCutoff: 1000, priority: 2 },

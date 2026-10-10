@@ -20,7 +20,8 @@
     "e2e:bomb": "node tests/e2e/bomb.mjs",
     "e2e:botai": "node tests/e2e/botai.mjs",
     "e2e:controls": "node tests/e2e/controls.mjs",
-    "e2e:audio": "node tests/e2e/audio.mjs"
+    "e2e:audio": "node tests/e2e/audio.mjs",
+    "e2e:sounds": "node tests/e2e/sounds.mjs"
   },
   "dependencies": {
     "three": "^0.180.0",
