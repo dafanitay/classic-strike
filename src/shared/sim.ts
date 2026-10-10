@@ -1012,7 +1012,7 @@ export class Simulation {
     p.punchPitch += step.pitch;
     p.shotsFired = Math.floor(p.shotsFired) + 1;
     p.spreadAccum = Math.min(def.spreadMax, p.spreadAccum + def.spreadPerShot);
-    if (def.scope && p.scope > 0) {
+    if (def.scope && !def.scope.keepScope && p.scope > 0) {
       p.rescopeLevel = p.scope;
       p.scope = 0;
       p.rescopeAt = p.nextFire;

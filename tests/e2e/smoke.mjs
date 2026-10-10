@@ -51,16 +51,20 @@ const hudVisible = await page.locator('#hud').isVisible();
 check('HUD visible in game', hudVisible);
 await page.screenshot({ path: `${out}/03-spawn-freeze.png` });
 
-// Buy during freeze: B opens menu, 7 = Kevlar ($650 of $800).
+// Buy during freeze: B opens the menu, 6 = equipment, 1 = Kevlar ($650 of $800).
 const st0 = await page.evaluate(() => ({ phase: window.__cs.sim.phase, money: window.__cs.me.money, armor: window.__cs.me.armor }));
 await page.keyboard.press('KeyB');
 await page.waitForTimeout(150);
 const buyOpen = await page.locator('.buymenu').isVisible();
 await page.screenshot({ path: `${out}/04-buy-menu.png` });
-await page.keyboard.press('Digit7');
+await page.keyboard.press('Digit6');
+await page.waitForTimeout(100);
+const equipShown = await page.locator('.buymenu h2').textContent();
+await page.keyboard.press('Digit1');
 await page.waitForTimeout(100);
 const st1 = await page.evaluate(() => ({ money: window.__cs.me.money, armor: window.__cs.me.armor }));
 check('buy menu opens with B during freeze', buyOpen, `phase=${st0.phase}`);
+check('6 opens the equipment category', /Equipment/.test(equipShown ?? ''), equipShown ?? '');
 check('buying Kevlar charges $650 and gives armour', st1.armor === 100 && st1.money === st0.money - 650, JSON.stringify(st1));
 await page.keyboard.press('KeyB');
 await page.waitForTimeout(100);

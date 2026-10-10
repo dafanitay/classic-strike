@@ -1,5 +1,5 @@
 import type { Team } from '../shared/map';
-import { BUYABLE, WEAPONS, type WeaponId } from '../shared/weapons';
+import { BUYABLE, BUY_CATEGORIES, WEAPONS, type WeaponId } from '../shared/weapons';
 import { BOMB, EQUIPMENT, TEAM_NAME, type BuyItem, type KillSource, type SimPlayer, type Simulation } from '../shared/sim';
 import { DEFAULT_CROSSHAIR, type CrosshairSettings } from '../settings';
 import { crosshairLayout, type Rect } from './crosshair';
@@ -44,7 +44,13 @@ export class Hud {
   private readonly scoreboard: HTMLElement;
   private readonly buy: HTMLElement;
   private readonly buyMsg: HTMLElement;
-  private readonly buyItems: { item: BuyItem; el: HTMLButtonElement }[] = [];
+  private readonly buyItems: { item: BuyItem; cat: string; el: HTMLButtonElement }[] = [];
+  private readonly buyCats: { key: string; el: HTMLButtonElement }[] = [];
+  private buyBack!: HTMLButtonElement;
+  private buyTitle!: HTMLElement;
+  /** Open category (its number key), or null for the category list. */
+  private buyCat: string | null = null;
+  private buyCtx: { sim: Simulation; me: SimPlayer } | null = null;
   private readonly fps: HTMLElement;
   private readonly progress: HTMLElement;
   private readonly progressFill: HTMLElement;
@@ -118,22 +124,39 @@ export class Hud {
     this.scoreboard = el('div', 'scoreboard hidden', undefined, root);
 
     this.buy = el('div', 'buymenu panel hidden', undefined, root);
-    el('h2', '', 'Buy Menu', this.buy);
+    // Two levels, like the classic menu: a number picks a category
+    // (1 pistols … 5 machine gun, 6 equipment), then a number picks the item;
+    // 0 goes back. Each team only sees what it can buy.
+    this.buyTitle = el('h2', '', 'Buy Menu', this.buy);
     const grid = el('div', 'buy-grid', undefined, this.buy);
+    const cats = [...BUY_CATEGORIES.map((c) => ({ key: c.key, name: c.name })), { key: '6', name: 'Equipment' }];
+    for (const c of cats) {
+      const b = button('', 'buy-item buy-cat', () => this.openCategory(c.key), grid);
+      el('span', 'k', c.key, b);
+      el('span', '', c.name, b);
+      el('span', 'p', '›', b);
+      b.dataset.name = c.name;
+      this.buyCats.push({ key: c.key, el: b });
+    }
+    const catOf = (item: BuyItem): string => {
+      if (!(item in WEAPONS)) return '6';
+      const cls = WEAPONS[item as WeaponId].cls;
+      return BUY_CATEGORIES.find((c) => c.classes.includes(cls))!.key;
+    };
     const items: BuyItem[] = [...BUYABLE, 'kevlar', 'helmet', 'ammo1', 'ammo2', 'defuser'];
-    items.forEach((item, i) => {
-      // Number keys 1–9, 0 for the first ten items; the rest are click-only.
-      const key = i < 10 ? String((i + 1) % 10) : '';
-      const b = button('', 'buy-item', () => this.onBuy(item), grid);
-      el('span', 'k', key || '·', b);
+    for (const item of items) {
+      const b = button('', 'buy-item hidden', () => this.onBuy(item), grid);
+      el('span', 'k', '', b);
       const name = el('span', '', undefined, b);
       const isW = item in WEAPONS;
       el('span', 'cat', isW ? WEAPONS[item as WeaponId].cls : 'equipment', name);
       name.append(isW ? WEAPONS[item as WeaponId].name : EQUIPMENT[item as keyof typeof EQUIPMENT].name);
       el('span', 'p', '$' + (isW ? WEAPONS[item as WeaponId].price : EQUIPMENT[item as keyof typeof EQUIPMENT].price), b);
-      b.dataset.key = key;
-      this.buyItems.push({ item, el: b });
-    });
+      this.buyItems.push({ item, cat: catOf(item), el: b });
+    }
+    this.buyBack = button('', 'buy-item buy-back hidden', () => this.openCategory(null), grid);
+    el('span', 'k', '0', this.buyBack);
+    el('span', '', 'Back', this.buyBack);
     this.buyMsg = el('div', 'buy-msg', '', this.buy);
     const act = el('div', 'actions', undefined, this.buy);
     button('Close (B)', 'btn', () => this.onCloseBuy(), act);
@@ -367,25 +390,52 @@ export class Hud {
   openBuy(open: boolean, sim?: Simulation, me?: SimPlayer): void {
     this.toggle(this.buy, 'hidden', !open);
     this.buyMsg.textContent = '';
+    this.buyCat = null;
     if (open && sim && me) this.refreshBuy(sim, me);
   }
 
+  private openCategory(key: string | null): void {
+    this.buyCat = key;
+    if (this.buyCtx) this.refreshBuy(this.buyCtx.sim, this.buyCtx.me, '');
+  }
+
   refreshBuy(sim: Simulation, me: SimPlayer, msg?: string): void {
-    for (const { item, el: b } of this.buyItems) {
+    this.buyCtx = { sim, me };
+    const cat = this.buyCat;
+    for (const c of this.buyCats) this.toggle(c.el, 'hidden', cat !== null);
+    this.toggle(this.buyBack, 'hidden', cat === null);
+    const name = cat ? this.buyCats.find((c) => c.key === cat)?.el.dataset.name : null;
+    this.buyTitle.textContent = name ? `Buy Menu · ${name}` : 'Buy Menu';
+    let n = 0;
+    for (const { item, cat: c, el: b } of this.buyItems) {
       const isW = item in WEAPONS;
       const def = isW ? WEAPONS[item as WeaponId] : null;
       const na = (!!def?.team && def.team !== me.team) || (item === 'defuser' && me.team !== 'D');
-      b.classList.toggle('na', na);
-      b.classList.toggle('poor', !na && sim.priceOf(item) > me.money);
-      b.disabled = na;
-      if (na) b.title = `${TEAM_NAME[def?.team ?? 'D']} only`;
+      const shown = c === cat && !na;
+      this.toggle(b, 'hidden', !shown);
+      b.disabled = !shown;
+      b.dataset.key = shown ? String(++n) : '';
+      (b.querySelector('.k') as HTMLElement).textContent = b.dataset.key;
+      b.classList.toggle('poor', shown && sim.priceOf(item) > me.money);
+      if (na && def?.team) b.title = `${TEAM_NAME[def.team]} only`;
     }
     if (msg !== undefined) this.buyMsg.textContent = msg;
     else if (!sim.canBuy(me)) this.buyMsg.textContent = 'Buying is only possible in your spawn zone during buy time.';
   }
 
-  /** Map a number key to a buy item while the buy menu is open. */
+  /**
+   * A number key while the buy menu is open: opens a category (or goes back
+   * with 0), or returns the item to buy.
+   */
   buyItemForKey(key: string): BuyItem | null {
+    if (key === '0') {
+      if (this.buyCat !== null) this.openCategory(null);
+      return null;
+    }
+    if (this.buyCat === null) {
+      if (this.buyCats.some((c) => c.key === key)) this.openCategory(key);
+      return null;
+    }
     return this.buyItems.find((b) => b.el.dataset.key === key && !b.el.disabled)?.item ?? null;
   }
 }

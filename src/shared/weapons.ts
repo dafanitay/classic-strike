@@ -4,9 +4,22 @@
  * Distances are metres, times seconds, angles radians.
  */
 
-export type WeaponId = 'knife' | 'p9' | 'mk5' | 'pump12' | 'ar7' | 'k4' | 'longbow';
+export type WeaponId =
+  | 'knife'
+  // pistols
+  | 'p9' | 'm45' | 'k57' | 'hc50'
+  // SMGs
+  | 'tp9' | 'r10' | 'mk5' | 'u45' | 'p50'
+  // shotguns
+  | 'pump12' | 'auto12'
+  // rifles
+  | 'gr3' | 'fm2' | 'ar7' | 'k4' | 'sg5' | 'au3'
+  // snipers
+  | 'kestrel' | 'longbow' | 'rp3' | 'vg5'
+  // machine gun
+  | 'mg9';
 export type WeaponSlot = 1 | 2 | 3;
-export type WeaponClass = 'melee' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'sniper';
+export type WeaponClass = 'melee' | 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'sniper' | 'mg';
 
 export interface WeaponDef {
   id: WeaponId;
@@ -52,7 +65,12 @@ export interface WeaponDef {
   recoilPattern: readonly PatternKey[];
   /** Time constant (s) of recoil recovery once the trigger is released. */
   recoilTau: number;
-  scope?: { fovs: number[]; scopedSpread: number; scopedSpeed: number };
+  /**
+   * Zoom levels. Bolt-action rifles drop out of the scope after each shot
+   * and come back once the bolt has cycled; `keepScope` weapons (scoped
+   * assault rifles, semi-automatic snipers) stay zoomed while firing.
+   */
+  scope?: { fovs: number[]; scopedSpread: number; scopedSpeed: number; keepScope?: boolean };
   killReward: number;
 }
 
@@ -113,9 +131,148 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     recoilPattern: [[0, 0, 0], [1, 0, 2.8], [9, 0, 3.0]], recoilTau: 0.25,
     scope: { fovs: [40, 15], scopedSpread: 0.05 * DEG, scopedSpeed: 150 * 0.0254 }, killReward: 100,
   },
+  // ---------------------------------------------------------------- pistols
+  m45: {
+    id: 'm45', name: 'M45 Tactical', slot: 2, cls: 'pistol', price: 500,
+    damage: 34, pellets: 1, cycle: 0.17, automatic: false, magSize: 12, reserve: 72, reloadTime: 2.7,
+    rangeModifier: 0.79, range: 120, armorPen: 0.5, maxSpeed: 250 * 0.0254,
+    drawTime: 0.4, spreadBase: 0.25 * DEG, spreadMove: 2.0 * DEG, spreadAir: 6 * DEG, spreadPerShot: 0.4 * DEG, spreadMax: 1.6 * DEG, spreadRecovery: 6 * DEG, crouchFactor: 0.75,
+    recoilPattern: [[0, 0, 0], [1, 0, 1.6], [3, 0.3, 3.6], [6, -0.4, 5.0], [11, 0.2, 5.8]], recoilTau: 0.1, killReward: 300,
+  },
+  k57: {
+    id: 'k57', name: 'K-57 Duty', slot: 2, cls: 'pistol', price: 750, team: 'D',
+    damage: 25, pellets: 1, cycle: 0.15, automatic: false, magSize: 20, reserve: 100, reloadTime: 2.7,
+    rangeModifier: 0.885, range: 120, armorPen: 0.75, maxSpeed: 250 * 0.0254,
+    drawTime: 0.4, spreadBase: 0.28 * DEG, spreadMove: 1.9 * DEG, spreadAir: 6 * DEG, spreadPerShot: 0.3 * DEG, spreadMax: 1.4 * DEG, spreadRecovery: 6 * DEG, crouchFactor: 0.75,
+    recoilPattern: [[0, 0, 0], [1, 0, 1.1], [4, -0.3, 3.0], [9, 0.4, 4.4], [19, -0.2, 5.4]], recoilTau: 0.09, killReward: 300,
+  },
+  hc50: {
+    id: 'hc50', name: 'HC-50 Hand Cannon', slot: 2, cls: 'pistol', price: 650,
+    damage: 54, pellets: 1, cycle: 0.225, automatic: false, magSize: 7, reserve: 35, reloadTime: 2.2,
+    rangeModifier: 0.81, range: 160, armorPen: 0.93, maxSpeed: 250 * 0.0254,
+    drawTime: 0.5, spreadBase: 0.2 * DEG, spreadMove: 3.0 * DEG, spreadAir: 9 * DEG, spreadPerShot: 1.2 * DEG, spreadMax: 3.0 * DEG, spreadRecovery: 5 * DEG, crouchFactor: 0.8,
+    recoilPattern: [[0, 0, 0], [1, 0, 3.2], [3, 0.5, 6.8], [6, -0.4, 8.5]], recoilTau: 0.16, killReward: 300,
+  },
+  // ------------------------------------------------------------------- SMGs
+  tp9: {
+    id: 'tp9', name: 'TP-9 Machine Pistol', slot: 1, cls: 'smg', price: 1250, team: 'D',
+    damage: 20, pellets: 1, cycle: 0.07, automatic: true, magSize: 30, reserve: 120, reloadTime: 2.1,
+    rangeModifier: 0.85, range: 100, armorPen: 0.6, maxSpeed: 250 * 0.0254,
+    drawTime: 0.4, spreadBase: 0.5 * DEG, spreadMove: 1.4 * DEG, spreadAir: 5 * DEG, spreadPerShot: 0.05 * DEG, spreadMax: 1.2 * DEG, spreadRecovery: 4 * DEG, crouchFactor: 0.8,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.4], [6, 0.3, 1.9], [12, -0.5, 2.7], [20, 0.5, 3.2], [29, -0.2, 3.5]], recoilTau: 0.09, killReward: 600,
+  },
+  r10: {
+    id: 'r10', name: 'R-10 Rattler', slot: 1, cls: 'smg', price: 1400, team: 'A',
+    damage: 28, pellets: 1, cycle: 0.07, automatic: true, magSize: 30, reserve: 100, reloadTime: 3.0,
+    rangeModifier: 0.82, range: 90, armorPen: 0.6, maxSpeed: 250 * 0.0254,
+    drawTime: 0.4, spreadBase: 0.7 * DEG, spreadMove: 1.8 * DEG, spreadAir: 6 * DEG, spreadPerShot: 0.08 * DEG, spreadMax: 1.6 * DEG, spreadRecovery: 4 * DEG, crouchFactor: 0.85,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.6], [5, -0.4, 2.6], [10, 0.6, 3.8], [18, -0.8, 4.6], [29, 0.4, 5.0]], recoilTau: 0.1, killReward: 600,
+  },
+  u45: {
+    id: 'u45', name: 'U-45 Carbine SMG', slot: 1, cls: 'smg', price: 1700,
+    damage: 30, pellets: 1, cycle: 0.105, automatic: true, magSize: 25, reserve: 100, reloadTime: 3.5,
+    rangeModifier: 0.82, range: 120, armorPen: 0.65, maxSpeed: 250 * 0.0254,
+    drawTime: 0.5, spreadBase: 0.4 * DEG, spreadMove: 1.6 * DEG, spreadAir: 5 * DEG, spreadPerShot: 0.04 * DEG, spreadMax: 1.0 * DEG, spreadRecovery: 4 * DEG, crouchFactor: 0.8,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.6], [5, 0.3, 2.4], [10, -0.5, 3.3], [17, 0.6, 3.8], [24, -0.2, 4.1]], recoilTau: 0.1, killReward: 600,
+  },
+  p50: {
+    id: 'p50', name: 'P-50 Hornet', slot: 1, cls: 'smg', price: 2350,
+    damage: 23, pellets: 1, cycle: 0.066, automatic: true, magSize: 50, reserve: 100, reloadTime: 3.3,
+    rangeModifier: 0.885, range: 120, armorPen: 0.75, maxSpeed: 245 * 0.0254,
+    drawTime: 0.5, spreadBase: 0.45 * DEG, spreadMove: 1.5 * DEG, spreadAir: 5 * DEG, spreadPerShot: 0.03 * DEG, spreadMax: 1.0 * DEG, spreadRecovery: 4 * DEG, crouchFactor: 0.8,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.35], [8, 0.4, 1.8], [16, -0.6, 2.6], [26, 0.7, 3.1], [36, -0.4, 3.4], [49, 0.2, 3.6]], recoilTau: 0.09, killReward: 600,
+  },
+  // --------------------------------------------------------------- shotguns
+  auto12: {
+    id: 'auto12', name: 'Auto-12 Combat Shotgun', slot: 1, cls: 'shotgun', price: 3000,
+    damage: 18, pellets: 6, cycle: 0.25, automatic: false, magSize: 7, reserve: 32, reloadTime: 3.0,
+    rangeModifier: 0.7, range: 40, armorPen: 0.5, maxSpeed: 240 * 0.0254,
+    drawTime: 0.6, spreadBase: 3.4 * DEG, spreadMove: 0.6 * DEG, spreadAir: 2 * DEG, spreadPerShot: 0, spreadMax: 0, spreadRecovery: 5 * DEG, crouchFactor: 1,
+    recoilPattern: [[0, 0, 0], [1, 0, 2.2], [3, 0.4, 4.0], [6, -0.3, 5.2]], recoilTau: 0.16, killReward: 900,
+  },
+  // ----------------------------------------------------------------- rifles
+  gr3: {
+    id: 'gr3', name: 'GR-3 Galeo', slot: 1, cls: 'rifle', price: 2000, team: 'A',
+    damage: 30, pellets: 1, cycle: 0.0875, automatic: true, magSize: 35, reserve: 90, reloadTime: 2.95,
+    rangeModifier: 0.98, range: 200, armorPen: 0.775, maxSpeed: 240 * 0.0254,
+    drawTime: 0.6, spreadBase: 0.3 * DEG, spreadMove: 2.8 * DEG, spreadAir: 8 * DEG, spreadPerShot: 0.04 * DEG, spreadMax: 0.8 * DEG, spreadRecovery: 3 * DEG, crouchFactor: 0.7,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.7], [4, 0.2, 2.9], [8, -0.5, 5.0], [13, 1.0, 5.8], [19, -1.2, 6.3], [26, 0.8, 6.7], [34, 0, 7.0]], recoilTau: 0.12, killReward: 300,
+  },
+  fm2: {
+    id: 'fm2', name: 'FM-2 Falcon', slot: 1, cls: 'rifle', price: 2250, team: 'D',
+    damage: 30, pellets: 1, cycle: 0.09, automatic: true, magSize: 25, reserve: 90, reloadTime: 3.3,
+    rangeModifier: 0.96, range: 200, armorPen: 0.7, maxSpeed: 220 * 0.0254,
+    drawTime: 0.6, spreadBase: 0.25 * DEG, spreadMove: 2.8 * DEG, spreadAir: 8 * DEG, spreadPerShot: 0.03 * DEG, spreadMax: 0.7 * DEG, spreadRecovery: 3 * DEG, crouchFactor: 0.7,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.6], [4, -0.2, 2.6], [8, 0.4, 4.4], [13, -0.9, 5.2], [18, 1.0, 5.6], [24, 0, 5.9]], recoilTau: 0.11, killReward: 300,
+  },
+  sg5: {
+    id: 'sg5', name: 'SG-5 Scout Rifle', slot: 1, cls: 'rifle', price: 3500, team: 'A',
+    damage: 33, pellets: 1, cycle: 0.0825, automatic: true, magSize: 30, reserve: 90, reloadTime: 3.0,
+    rangeModifier: 0.955, range: 220, armorPen: 0.8, maxSpeed: 235 * 0.0254,
+    drawTime: 0.6, spreadBase: 0.2 * DEG, spreadMove: 3.0 * DEG, spreadAir: 8 * DEG, spreadPerShot: 0.03 * DEG, spreadMax: 0.6 * DEG, spreadRecovery: 3 * DEG, crouchFactor: 0.7,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.7], [5, 0.2, 3.0], [9, -0.4, 5.3], [14, 1.4, 6.0], [20, -1.6, 6.5], [29, 0.8, 7.0]], recoilTau: 0.12,
+    scope: { fovs: [55], scopedSpread: 0.12 * DEG, scopedSpeed: 200 * 0.0254, keepScope: true }, killReward: 300,
+  },
+  au3: {
+    id: 'au3', name: 'AU-3 Bullpup', slot: 1, cls: 'rifle', price: 3500, team: 'D',
+    damage: 32, pellets: 1, cycle: 0.09, automatic: true, magSize: 30, reserve: 90, reloadTime: 3.3,
+    rangeModifier: 0.96, range: 220, armorPen: 0.7, maxSpeed: 221 * 0.0254,
+    drawTime: 0.6, spreadBase: 0.18 * DEG, spreadMove: 2.8 * DEG, spreadAir: 8 * DEG, spreadPerShot: 0.025 * DEG, spreadMax: 0.5 * DEG, spreadRecovery: 3 * DEG, crouchFactor: 0.7,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.6], [5, 0.3, 2.7], [9, -0.3, 4.6], [14, 1.1, 5.3], [20, -1.0, 5.7], [29, 0.4, 6.1]], recoilTau: 0.11,
+    scope: { fovs: [55], scopedSpread: 0.1 * DEG, scopedSpeed: 190 * 0.0254, keepScope: true }, killReward: 300,
+  },
+  // ---------------------------------------------------------------- snipers
+  kestrel: {
+    id: 'kestrel', name: 'Kestrel Light Sniper', slot: 1, cls: 'sniper', price: 2750,
+    damage: 75, pellets: 1, cycle: 1.25, automatic: false, magSize: 10, reserve: 90, reloadTime: 2.0,
+    rangeModifier: 0.98, range: 300, armorPen: 0.85, maxSpeed: 260 * 0.0254,
+    drawTime: 0.7, spreadBase: 3.5 * DEG, spreadMove: 5 * DEG, spreadAir: 10 * DEG, spreadPerShot: 0, spreadMax: 0, spreadRecovery: 20 * DEG, crouchFactor: 1,
+    recoilPattern: [[0, 0, 0], [1, 0, 2.2], [9, 0, 2.4]], recoilTau: 0.2,
+    scope: { fovs: [40, 15], scopedSpread: 0.07 * DEG, scopedSpeed: 220 * 0.0254 }, killReward: 300,
+  },
+  rp3: {
+    id: 'rp3', name: 'RP-3 Marksman (semi-auto)', slot: 1, cls: 'sniper', price: 5000, team: 'A',
+    damage: 80, pellets: 1, cycle: 0.25, automatic: false, magSize: 20, reserve: 90, reloadTime: 4.6,
+    rangeModifier: 0.98, range: 300, armorPen: 0.83, maxSpeed: 210 * 0.0254,
+    drawTime: 0.8, spreadBase: 4 * DEG, spreadMove: 6 * DEG, spreadAir: 12 * DEG, spreadPerShot: 0.15 * DEG, spreadMax: 0.6 * DEG, spreadRecovery: 4 * DEG, crouchFactor: 1,
+    recoilPattern: [[0, 0, 0], [1, 0, 1.8], [4, 0.3, 4.0], [9, -0.2, 5.0]], recoilTau: 0.18,
+    scope: { fovs: [40, 15], scopedSpread: 0.1 * DEG, scopedSpeed: 150 * 0.0254, keepScope: true }, killReward: 300,
+  },
+  vg5: {
+    id: 'vg5', name: 'VG-5 Vanguard (semi-auto)', slot: 1, cls: 'sniper', price: 4200, team: 'D',
+    damage: 70, pellets: 1, cycle: 0.25, automatic: false, magSize: 30, reserve: 90, reloadTime: 3.8,
+    rangeModifier: 0.98, range: 300, armorPen: 0.83, maxSpeed: 210 * 0.0254,
+    drawTime: 0.8, spreadBase: 4 * DEG, spreadMove: 6 * DEG, spreadAir: 12 * DEG, spreadPerShot: 0.15 * DEG, spreadMax: 0.6 * DEG, spreadRecovery: 4 * DEG, crouchFactor: 1,
+    recoilPattern: [[0, 0, 0], [1, 0, 1.6], [4, -0.3, 3.6], [9, 0.2, 4.6]], recoilTau: 0.18,
+    scope: { fovs: [40, 15], scopedSpread: 0.1 * DEG, scopedSpeed: 150 * 0.0254, keepScope: true }, killReward: 300,
+  },
+  // ------------------------------------------------------------ machine gun
+  mg9: {
+    id: 'mg9', name: 'MG-9 Bulldog', slot: 1, cls: 'mg', price: 5750,
+    damage: 32, pellets: 1, cycle: 0.08, automatic: true, magSize: 100, reserve: 200, reloadTime: 4.7,
+    rangeModifier: 0.97, range: 200, armorPen: 0.8, maxSpeed: 220 * 0.0254,
+    drawTime: 1.0, spreadBase: 0.6 * DEG, spreadMove: 3.6 * DEG, spreadAir: 9 * DEG, spreadPerShot: 0.05 * DEG, spreadMax: 1.6 * DEG, spreadRecovery: 2.5 * DEG, crouchFactor: 0.7,
+    recoilPattern: [[0, 0, 0], [1, 0, 0.8], [5, 0.3, 3.2], [10, -0.8, 5.4], [18, 1.4, 6.6], [30, -1.6, 7.4], [50, 1.0, 8.0], [99, 0, 8.4]], recoilTau: 0.14, killReward: 300,
+  },
 };
 
-export const BUYABLE: WeaponId[] = ['p9', 'mk5', 'pump12', 'ar7', 'k4', 'longbow'];
+/** Buy-menu order, grouped like the classic menu (1 pistols … 5 machine gun). */
+export const BUYABLE: WeaponId[] = [
+  'p9', 'm45', 'k57', 'hc50',
+  'pump12', 'auto12',
+  'tp9', 'r10', 'mk5', 'u45', 'p50',
+  'gr3', 'fm2', 'ar7', 'k4', 'sg5', 'au3', 'kestrel', 'longbow', 'rp3', 'vg5',
+  'mg9',
+];
+
+/** Buy-menu categories (number keys), in the classic order. */
+export const BUY_CATEGORIES: { key: string; name: string; classes: WeaponClass[] }[] = [
+  { key: '1', name: 'Pistols', classes: ['pistol'] },
+  { key: '2', name: 'Shotguns', classes: ['shotgun'] },
+  { key: '3', name: 'SMGs', classes: ['smg'] },
+  { key: '4', name: 'Rifles', classes: ['rifle', 'sniper'] },
+  { key: '5', name: 'Machine gun', classes: ['mg'] },
+];
 
 export interface WeaponState {
   id: WeaponId;

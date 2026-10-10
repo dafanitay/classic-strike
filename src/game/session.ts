@@ -288,7 +288,7 @@ export class GameSession {
 
   private onBuyKey = (e: KeyboardEvent) => {
     if (!this.hud.buyOpen) return;
-    const m = /^Digit(\d)$/.exec(e.code);
+    const m = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
     if (!m) return;
     const item = this.hud.buyItemForKey(m[1]);
     if (item) this.tryBuy(item);
