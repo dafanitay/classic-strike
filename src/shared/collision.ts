@@ -109,45 +109,57 @@ export class CollisionWorld {
       scratch,
     );
 
+    // Each axis is resolved against where the hull was *before* that axis
+    // moved: a box is only blocking from the side the hull came from. A hull
+    // that already overlaps a box slightly (e.g. a position rounded by the
+    // network) is nudged out the shortest way instead of being teleported
+    // to the far side or onto the top of a wall.
+    const TOL = 0.01;
+
     // --- Y ---
+    const prevY = pos.y;
     pos.y += delta.y;
     for (const i of near) {
       const b = this.boxes[i];
       if (!(pos.x + halfWidth > b.min.x + EPS && pos.x - halfWidth < b.max.x - EPS &&
             pos.z + halfWidth > b.min.z + EPS && pos.z - halfWidth < b.max.z - EPS)) continue;
-      if (pos.y + height > b.min.y && pos.y < b.max.y) {
-        if (delta.y <= 0) {
-          pos.y = b.max.y;
-          res.onGround = true;
-        } else {
-          pos.y = b.min.y - height;
-          res.hitCeiling = true;
-        }
+      if (!(pos.y + height > b.min.y && pos.y < b.max.y)) continue;
+      if (prevY >= b.max.y - TOL) {
+        pos.y = b.max.y;
+        res.onGround = true;
+      } else if (prevY + height <= b.min.y + TOL) {
+        pos.y = b.min.y - height;
+        res.hitCeiling = true;
       }
+      // Otherwise we were already inside it horizontally: X/Z resolve it.
     }
 
     // --- X ---
+    const prevX = pos.x;
     pos.x += delta.x;
     for (const i of near) {
       const b = this.boxes[i];
       if (!(pos.y + height > b.min.y + EPS && pos.y < b.max.y - EPS &&
             pos.z + halfWidth > b.min.z + EPS && pos.z - halfWidth < b.max.z - EPS)) continue;
-      if (pos.x + halfWidth > b.min.x && pos.x - halfWidth < b.max.x) {
-        pos.x = delta.x > 0 ? b.min.x - halfWidth : b.max.x + halfWidth;
-        res.hitWall = true;
-      }
+      if (!(pos.x + halfWidth > b.min.x && pos.x - halfWidth < b.max.x)) continue;
+      if (prevX + halfWidth <= b.min.x + TOL) pos.x = b.min.x - halfWidth;
+      else if (prevX - halfWidth >= b.max.x - TOL) pos.x = b.max.x + halfWidth;
+      else pos.x = pos.x < (b.min.x + b.max.x) / 2 ? b.min.x - halfWidth : b.max.x + halfWidth;
+      res.hitWall = true;
     }
 
     // --- Z ---
+    const prevZ = pos.z;
     pos.z += delta.z;
     for (const i of near) {
       const b = this.boxes[i];
       if (!(pos.y + height > b.min.y + EPS && pos.y < b.max.y - EPS &&
             pos.x + halfWidth > b.min.x + EPS && pos.x - halfWidth < b.max.x - EPS)) continue;
-      if (pos.z + halfWidth > b.min.z && pos.z - halfWidth < b.max.z) {
-        pos.z = delta.z > 0 ? b.min.z - halfWidth : b.max.z + halfWidth;
-        res.hitWall = true;
-      }
+      if (!(pos.z + halfWidth > b.min.z && pos.z - halfWidth < b.max.z)) continue;
+      if (prevZ + halfWidth <= b.min.z + TOL) pos.z = b.min.z - halfWidth;
+      else if (prevZ - halfWidth >= b.max.z - TOL) pos.z = b.max.z + halfWidth;
+      else pos.z = pos.z < (b.min.z + b.max.z) / 2 ? b.min.z - halfWidth : b.max.z + halfWidth;
+      res.hitWall = true;
     }
     return res;
   }

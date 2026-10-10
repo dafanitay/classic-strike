@@ -91,6 +91,7 @@ input[type='text'] { background: #1a1b15; color: var(--text); border: 1px solid 
 .kf .a { color: var(--a); }
 .kf .d { color: var(--d); }
 .kf .w { color: #cfc9b0; margin: 0 6px; font-size: 11px; }
+.kf.note { color: #e9e2c8; font-style: italic; }
 .kf .hs { color: #ff6d5e; font-size: 11px; margin-right: 4px; }
 
 .crosshair { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }

@@ -9,6 +9,9 @@ import { Simulation, TEAM_NAME, TICK_DT, emptyCmd, type BuyItem, type SimEvent, 
 import { lerp, type Vec3 } from '../shared/vec';
 import { WEAPONS, type WeaponSlot } from '../shared/weapons';
 import { Hud } from '../ui/hud';
+import type { NetClient, NetStatus } from '../net/client';
+import { NetMirror } from '../net/mirror';
+import type { RoomInfo, ServerMsg } from '../shared/protocol';
 import { Input } from './input';
 
 export interface SoloConfig {
@@ -20,21 +23,34 @@ export interface SoloConfig {
   roundsToWin: number;
 }
 
+export type SessionMode =
+  | { kind: 'solo'; cfg: SoloConfig }
+  | { kind: 'online'; net: NetClient; you: number; map: MapDef; roundsToWin: number };
+
 export interface SessionUi {
   showPause(open: boolean): void;
   showMatchEnd(winner: Team | null, me: Team, score: Record<Team, number>): void;
   showClickToPlay(open: boolean, text?: string): void;
+  showDisconnected(text: string): void;
 }
 
 /**
- * A single-player match: owns the simulation, the bots, the renderer, the
- * HUD and the main loop. The simulation advances on a fixed 60 Hz tick;
- * rendering interpolates between the last two ticks for smooth motion at
- * any monitor refresh rate.
+ * A running match: owns the renderer, the HUD, input and the main loop.
+ *
+ * Solo: the Simulation and the bots run right here on a fixed 60 Hz tick;
+ * rendering interpolates between the last two ticks.
+ *
+ * Online: the server runs the Simulation. Here a mirror Simulation holds the
+ * latest server state; our own movement is predicted locally (NetMirror) and
+ * other players are interpolated between snapshots. Shots are only
+ * *cosmetically* predicted — damage and deaths always come from the server.
  */
 export class GameSession {
   readonly sim: Simulation;
-  readonly bots: BotDirector;
+  readonly bots: BotDirector | null;
+  readonly net: NetClient | null;
+  readonly mirror: NetMirror | null;
+  roomInfo: RoomInfo | null = null;
   readonly renderer: GameRenderer;
   readonly hud: Hud;
   readonly input: Input;
@@ -64,24 +80,43 @@ export class GameSession {
   private readonly shotThisTick = new Set<number>();
   private readonly showFps = new URLSearchParams(location.search).has('debug');
   private readonly tmpV = new THREE.Vector3();
+  private predNextFire = 0;
+  private predFireHeld = false;
+  private viewTeam: Team | null = null;
 
-  constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement, cfg: SoloConfig, settings: Settings, audio: GameAudio, ui: SessionUi) {
+  constructor(canvas: HTMLCanvasElement, hudRoot: HTMLElement, mode: SessionMode, settings: Settings, audio: GameAudio, ui: SessionUi) {
     this.settings = settings;
     this.audio = audio;
     this.ui = ui;
-    const map = buildMap(cfg.map);
-    this.sim = new Simulation(map, { roundsToWin: cfg.roundsToWin });
-    this.bots = new BotDirector(this.sim, cfg.difficulty);
+    const map = buildMap(mode.kind === 'solo' ? mode.cfg.map : mode.map);
     this.renderer = new GameRenderer(canvas, map, settings.quality);
     this.hud = new Hud(hudRoot);
     this.input = new Input(canvas);
 
-    const team: Team = cfg.team === 'auto' ? (Math.random() < 0.5 ? 'A' : 'D') : cfg.team;
-    const enemy: Team = team === 'A' ? 'D' : 'A';
-    this.me = this.sim.addPlayer(settings.playerName || 'Player', team, false);
-    for (let i = 0; i < cfg.teammates; i++) this.sim.addPlayer(BotDirector.botName(team, i), team, true);
-    for (let i = 0; i < cfg.opponents; i++) this.sim.addPlayer(BotDirector.botName(enemy, i), enemy, true);
-    this.renderer.viewmodel.setTeam(team);
+    if (mode.kind === 'solo') {
+      const cfg = mode.cfg;
+      this.sim = new Simulation(map, { roundsToWin: cfg.roundsToWin });
+      this.bots = new BotDirector(this.sim, cfg.difficulty);
+      this.net = null;
+      this.mirror = null;
+      const team: Team = cfg.team === 'auto' ? (Math.random() < 0.5 ? 'A' : 'D') : cfg.team;
+      const enemy: Team = team === 'A' ? 'D' : 'A';
+      this.me = this.sim.addPlayer(settings.playerName || 'Player', team, false);
+      for (let i = 0; i < cfg.teammates; i++) this.sim.addPlayer(BotDirector.botName(team, i), team, true);
+      for (let i = 0; i < cfg.opponents; i++) this.sim.addPlayer(BotDirector.botName(enemy, i), enemy, true);
+    } else {
+      this.sim = new Simulation(map, { roundsToWin: mode.roundsToWin });
+      this.bots = null;
+      this.net = mode.net;
+      // Placeholder until the first snapshot fills in the real state.
+      this.me = this.sim.addPlayer(settings.playerName || 'Player', 'A', false, mode.you);
+      this.me.alive = false;
+      this.mirror = new NetMirror(this.sim, mode.you);
+      this.roomInfo = this.net.lastRoom;
+      this.net.onMessage = (m) => this.onNetMessage(m);
+      this.net.onStatus = (st, detail) => this.onNetStatus(st, detail);
+    }
+    this.renderer.viewmodel.setTeam(this.me.team);
     this.input.yaw = this.me.yaw;
     this.applySettings(settings);
 
@@ -130,15 +165,30 @@ export class GameSession {
     this.input.dispose();
     this.renderer.dispose();
     this.hud.show(false);
+    this.net?.close();
+  }
+
+  get isOnline(): boolean {
+    return !!this.net;
+  }
+
+  /** Online: ask the server for a team change (only honoured in warmup / after the match). */
+  requestTeam(team: Team): void {
+    this.net?.send({ t: 'team', team });
   }
 
   restartRound(): void {
+    if (this.net) return; // the server owns rounds online
     this.sim.restartRound();
     this.afterReset();
   }
 
   restartMatch(): void {
     this.ended = false;
+    if (this.net) {
+      this.net.send({ t: 'rematch' });
+      return;
+    }
     this.sim.startMatch();
     this.afterReset();
   }
@@ -232,6 +282,10 @@ export class GameSession {
 
   private tryBuy(item: BuyItem): void {
     this.audio.unlock();
+    if (this.net) {
+      this.net.send({ t: 'buy', item });
+      return; // result arrives as a 'buyResult' message
+    }
     const err = this.sim.buy(this.me, item);
     if (err) this.audio.ui('deny');
     this.hud.refreshBuy(this.sim, this.me, err ?? `Bought ${item in WEAPONS ? WEAPONS[item as keyof typeof WEAPONS].name : item}.`);
@@ -239,10 +293,14 @@ export class GameSession {
 
   // ------------------------------------------------------------------ loop
 
-  private frame = (now: number) => {
+  private frame = () => {
     if (this.disposed) return;
     this.raf = requestAnimationFrame(this.frame);
-    const dt = Math.min(0.25, (now - this.lastFrame) / 1000);
+    // One clock for everything. rAF's own timestamp can lag performance.now()
+    // (e.g. a tab coming back from the background), and a negative delta
+    // would stall the simulation, so clamp to [0, 0.25] s.
+    const now = performance.now();
+    const dt = Math.min(0.25, Math.max(0, (now - this.lastFrame) / 1000));
     this.lastFrame = now;
     this.frames++;
     this.fpsT += dt;
@@ -252,7 +310,8 @@ export class GameSession {
       this.fpsT = 0;
     }
 
-    if (!this.paused) {
+    // Online play never pauses: the match goes on while the menu is open.
+    if (!this.paused || this.net) {
       this.acc += dt;
       let steps = 0;
       while (this.acc >= TICK_DT && steps < 8) {
@@ -272,6 +331,10 @@ export class GameSession {
     const cmd = playing ? this.input.sample() : { ...emptyCmd(this.input.yaw, this.input.pitch) };
     if (!playing) this.input.sample(); // drain queued actions
     if (cmd.slot && cmd.slot !== this.me.current && this.me.weapons[cmd.slot]) this.input.noteSlotChanged(this.me.current);
+    if (this.net && this.mirror) {
+      this.stepOnline(cmd);
+      return;
+    }
 
     if (this.me.alive) {
       sim.setCmd(this.me, cmd);
@@ -280,12 +343,97 @@ export class GameSession {
       if (cmd.fire && !this.spectateFireHeld) this.cycleSpectate();
       this.spectateFireHeld = cmd.fire;
     }
-    this.bots.update();
+    this.bots?.update();
     for (const p of sim.players) this.prev.set(p.id, { ...p.body.pos });
     sim.events.length = 0;
     sim.tick();
-    this.bots.observe(sim.events);
+    this.bots?.observe(sim.events);
     this.handleEvents(sim.events);
+  }
+
+  private stepOnline(cmd: ReturnType<Input['sample']>): void {
+    const me = this.me;
+    const mirror = this.mirror!;
+    this.prev.set(me.id, { ...me.body.pos });
+    if (!me.alive) {
+      if (cmd.fire && !this.spectateFireHeld) this.cycleSpectate();
+      this.spectateFireHeld = cmd.fire;
+    } else {
+      this.predictFire(cmd);
+    }
+    const seq = mirror.predict(cmd);
+    this.net!.send({ t: 'cmd', seq, cmd });
+  }
+
+  /** Cosmetic only: kick, flash and sound without waiting a round trip. */
+  private predictFire(cmd: ReturnType<Input['sample']>): void {
+    const me = this.me;
+    const sim = this.sim;
+    if (cmd.slot && me.weapons[cmd.slot] && cmd.slot !== me.current) {
+      me.current = cmd.slot;
+      me.switchEnd = sim.time + 0.45;
+    }
+    const def = sim.weaponOf(me);
+    const w = me.weapons[me.current];
+    const pressed = cmd.fire && !this.predFireHeld;
+    this.predFireHeld = cmd.fire;
+    const canShoot = sim.phase === 'live' || sim.phase === 'warmup';
+    if (!canShoot || sim.time < me.switchEnd || me.reloadEnd > 0 || sim.time < this.predNextFire) return;
+    if (def.cls === 'melee') {
+      if (!cmd.fire) return;
+      this.renderer.viewmodel.onFire();
+      this.audio.knife(false);
+      this.predNextFire = sim.time + def.cycle;
+      return;
+    }
+    if (!w || w.mag <= 0 || !(def.automatic ? cmd.fire : pressed)) return;
+    w.mag--; // until the next snapshot says otherwise
+    this.predNextFire = sim.time + def.cycle;
+    this.renderer.viewmodel.onFire();
+    this.audio.gunshot(def.cls, def.id);
+    const eye = sim.eyePos(me);
+    this.renderer.muzzleLight.intensity = 6;
+    this.renderer.muzzleLight.position.set(eye.x, eye.y - 0.1, eye.z);
+  }
+
+  private onNetMessage(m: ServerMsg): void {
+    const now = performance.now() / 1000;
+    switch (m.t) {
+      case 'snap': {
+        const { removed } = this.mirror!.applySnapshot(m.s, now);
+        for (const id of removed) this.renderer.removeAvatar(id);
+        this.handleEvents(m.s.events);
+        break;
+      }
+      case 'buyResult':
+        if (m.error) this.audio.ui('deny');
+        this.hud.refreshBuy(this.sim, this.me, m.error ?? `Bought ${m.item in WEAPONS ? WEAPONS[m.item as keyof typeof WEAPONS].name : m.item}.`);
+        break;
+      case 'room':
+        this.roomInfo = m.info;
+        break;
+      case 'notice':
+        this.hud.notice(m.text, now);
+        break;
+      case 'welcome':
+        this.hud.notice('Reconnected', now);
+        break;
+      case 'error':
+        this.hud.notice(m.text, now);
+        break;
+      default:
+        break;
+    }
+  }
+
+  private onNetStatus(st: NetStatus, detail?: string): void {
+    const now = performance.now() / 1000;
+    if (st === 'reconnecting') this.hud.message('Connection lost', detail ?? 'Reconnecting…', null, now, 30);
+    else if (st === 'open') this.hud.message('Reconnected', '', null, now, 1.5);
+    else if (st === 'closed' && !this.disposed) {
+      this.input.releaseLock();
+      this.ui.showDisconnected(detail ?? 'Disconnected from the game server.');
+    }
   }
 
   private cycleSpectate(): void {
@@ -313,7 +461,7 @@ export class GameSession {
           const first = !this.shotThisTick.has(ev.shooter);
           this.shotThisTick.add(ev.shooter);
           if (shooter === me) {
-            if (first) {
+            if (first && !this.net) {
               this.renderer.viewmodel.onFire();
               this.audio.gunshot(def.cls, ev.weapon);
               this.renderer.muzzleLight.intensity = 6;
@@ -334,6 +482,7 @@ export class GameSession {
         }
         case 'melee': {
           const shooter = sim.getPlayer(ev.shooter);
+          if (shooter === me && this.net) break; // already predicted
           if (shooter === me) this.renderer.viewmodel.onFire();
           this.audio.knife(ev.hit, shooter === me ? undefined : ev.pos);
           break;
@@ -393,9 +542,16 @@ export class GameSession {
           this.renderer.effects.clearDecals();
           this.deathTime = -1;
           this.spectateId = 0;
-          this.input.yaw = me.yaw;
+          this.input.yaw = this.mirror ? this.mirror.serverYaw : me.yaw;
           this.input.pitch = 0;
+          me.yaw = this.input.yaw;
+          this.predNextFire = 0;
           this.prev.clear();
+          if (this.ended) {
+            // Online rematch started by either player.
+            this.ended = false;
+            this.ui.showClickToPlay(true, 'Rematch! Click to play.');
+          }
           break;
         case 'freezeEnd':
           this.hud.message('Go!', 'Round is live', null, now, 1.5);
@@ -437,6 +593,17 @@ export class GameSession {
     const me = this.me;
     const r = this.renderer;
     const cam = r.camera;
+    if (this.mirror) {
+      const nowS = performance.now() / 1000;
+      sim.time = this.mirror.serverTime(nowS);
+      this.mirror.interpolate(nowS);
+      this.mirror.decayCorrection(dt);
+      for (const p of sim.players) if (p !== me) this.prev.set(p.id, { ...p.body.pos });
+    }
+    if (this.viewTeam !== me.team) {
+      this.viewTeam = me.team;
+      r.viewmodel.setTeam(me.team);
+    }
 
     // Who are we looking through?
     let view: SimPlayer | null = null;
@@ -466,6 +633,11 @@ export class GameSession {
     let showViewmodel = false;
     if (me.alive) {
       const pos = this.interp(me, alpha);
+      if (this.mirror) {
+        pos.x += this.mirror.correction.x;
+        pos.y += this.mirror.correction.y;
+        pos.z += this.mirror.correction.z;
+      }
       this.eyeSmooth += (eyeHeight(me.body) - this.eyeSmooth) * Math.min(1, dt * 14);
       cam.position.set(pos.x, pos.y + this.eyeSmooth, pos.z);
       cam.rotation.set(this.input.pitch + me.punchPitch * 0.6, this.input.yaw + me.punchYaw * 0.6, 0);
@@ -531,7 +703,11 @@ export class GameSession {
     const gap = 3 + (Math.tan(spread) / Math.tan(vfov / 2)) * (window.innerHeight / 2);
     let hint = '';
     if (me.alive && sim.canBuy(me) && !this.hud.buyOpen) hint = 'Press B to open the buy menu';
-    if (sim.phase === 'warmup') hint = 'Warmup — waiting for players';
+    if (sim.phase === 'warmup') {
+      hint = this.net
+        ? `Waiting for your friend — room code ${this.net.room}. Press Esc for the invite link.`
+        : 'Warmup — waiting for players';
+    }
     this.hud.update(sim, me, view, performance.now() / 1000, {
       crosshairGap: Math.min(gap, 140),
       scoped,

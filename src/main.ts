@@ -1,6 +1,8 @@
 import './ui/styles.css';
 import { GameAudio } from './audio/audio';
-import { GameSession, type SoloConfig } from './game/session';
+import { GameSession, type SessionMode } from './game/session';
+import type { NetClient } from './net/client';
+import { MAPS } from './shared/maps/depot';
 import { loadSettings, saveSettings, type Settings } from './settings';
 import { Menus } from './ui/menu';
 
@@ -34,7 +36,8 @@ const menus = new Menus({
     saveSettings(s);
     audio.setVolumes(s.masterVolume, s.sfxVolume);
   },
-  startSolo,
+  startSolo: (cfg) => startSession({ kind: 'solo', cfg }),
+  startOnline: (net, roundsToWin) => startOnlineSession(net, roundsToWin),
   click() {
     audio.unlock();
     audio.ui('click');
@@ -44,6 +47,7 @@ const menus = new Menus({
 function showPause(): void {
   if (!session) return;
   const s = session;
+  const online = s.net ? { room: s.net.room, switchTeam: () => s.requestTeam(s.me.team === 'A' ? 'D' : 'A') } : undefined;
   menus.pause({
     resume: () => s.play(),
     settings: () => menus.settings(showPause, true, (ns) => s.applySettings(ns)),
@@ -57,17 +61,26 @@ function showPause(): void {
       s.play();
     },
     quit: quitToMenu,
-  });
+  }, online);
 }
 
-function startSolo(cfg: SoloConfig): void {
+function startOnlineSession(net: NetClient, roundsToWin: number): void {
+  startSession({ kind: 'online', net, you: net.you, map: MAPS[0], roundsToWin });
+}
+
+function startSession(mode: SessionMode): void {
   if (!webglAvailable()) {
     alert('Classic Strike needs WebGL, which is not available in this browser.');
     return;
   }
   session?.dispose();
   menus.clear();
-  session = new GameSession(canvas, hudRoot, cfg, settings, audio, {
+  session = new GameSession(canvas, hudRoot, mode, settings, audio, {
+    showDisconnected: (text) => {
+      session?.dispose();
+      session = null;
+      menus.message('Disconnected', text, () => menus.main());
+    },
     showPause: (open) => (open ? showPause() : menus.clear()),
     showClickToPlay: (open, text) => {
       if (!open) return menus.clear();
@@ -90,7 +103,13 @@ function startSolo(cfg: SoloConfig): void {
 function quitToMenu(): void {
   session?.dispose();
   session = null;
-  menus.main();
+  // Invitation links look like ?room=CODE.
+const invited = new URLSearchParams(location.search).get('room');
+if (invited && /^[A-Za-z2-9]{5}$/.test(invited)) menus.friend(invited.toUpperCase());
+else menus.main();
 }
 
-menus.main();
+// Invitation links look like ?room=CODE.
+const invited = new URLSearchParams(location.search).get('room');
+if (invited && /^[A-Za-z2-9]{5}$/.test(invited)) menus.friend(invited.toUpperCase());
+else menus.main();

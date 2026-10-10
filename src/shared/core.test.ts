@@ -54,6 +54,21 @@ describe('movement', () => {
     expect(b.pos.x).toBeLessThan(-3); // slid sideways
   });
 
+  it('pushes a hull that starts slightly inside a wall back out, never onto the wall top', () => {
+    // Regression: network-rounded positions can overlap a wall by < 1 mm.
+    const wall = { min: { x: 0, y: 0, z: -5 }, max: { x: 1, y: 5, z: 5 } };
+    const w = flatWorld([wall]);
+    const b = makeBody({ x: 1 + PHYS.halfWidth - 0.0004, y: 0, z: 0 });
+    b.onGround = true;
+    stepMovement(w, b, { ...idle(-Math.PI / 2), forward: 1 }, PHYS.maxSpeed, TICK_DT); // walking away (+X)
+    expect(b.pos.y).toBeLessThan(0.01);
+    expect(b.pos.x).toBeGreaterThanOrEqual(1 + PHYS.halfWidth);
+    const c = makeBody({ x: 1 + PHYS.halfWidth - 0.0004, y: 0, z: 0 });
+    stepMovement(w, c, { ...idle(Math.PI / 2), forward: 1 }, PHYS.maxSpeed, TICK_DT); // walking into it (-X)
+    expect(c.pos.y).toBeLessThan(0.01);
+    expect(c.pos.x).toBeGreaterThanOrEqual(1 + PHYS.halfWidth - 1e-9);
+  });
+
   it('can jump onto a low crate but not a tall one', () => {
     for (const [h, ok] of [[1.0, true], [2.1, false]] as const) {
       const crate = { min: { x: -1, y: 0, z: -20 }, max: { x: 1, y: h, z: -1.5 } };

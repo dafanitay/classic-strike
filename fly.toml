@@ -1,0 +1,39 @@
+# Fly.io config for CLASSIC STRIKE (client + game server in one app).
+# Deploy:   fly launch --copy-config --no-deploy   (first time; pick a unique app name)
+#           fly deploy
+#           fly scale count 1          # rooms live in memory: exactly ONE machine
+app = "classic-strike"
+primary_region = "fra"   # pick the region closest to you and your friend
+
+[build]
+
+[env]
+  PORT = "8080"
+  # Optional: lock WebSocket connections to your site's origin, e.g.
+  # ALLOWED_ORIGINS = "https://classic-strike.fly.dev"
+  # Never set CS_DEBUG here — it enables a test-only teleport hook.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Stop the machine when nobody is connected (open WebSockets keep it up).
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 400
+    hard_limit = 500
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

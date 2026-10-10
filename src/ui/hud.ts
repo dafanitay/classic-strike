@@ -224,6 +224,14 @@ export class Hud {
     while (this.killfeed.children.length > 5) this.killfeed.firstElementChild!.remove();
   }
 
+  /** A system line in the kill feed (joins, disconnects, ...). */
+  notice(text: string, now: number): void {
+    const row = el('div', 'kf note', text);
+    row.dataset.until = String(now + 6);
+    this.killfeed.appendChild(row);
+    while (this.killfeed.children.length > 5) this.killfeed.firstElementChild!.remove();
+  }
+
   spectate(text: string | null, sub = ''): void {
     this.toggle(this.spec, 'hidden', text === null);
     if (text !== null) {

@@ -4,6 +4,8 @@ import { MAPS } from '../shared/maps/depot';
 import type { Team } from '../shared/map';
 import { TEAM_NAME } from '../shared/sim';
 import type { SoloConfig } from '../game/session';
+import { NetClient, serverHttpUrl } from '../net/client';
+import type { RoomInfo } from '../shared/protocol';
 import { button, el, row, segmented, slider } from './dom';
 
 /**
@@ -15,7 +17,21 @@ export interface MenuHost {
   settings: Settings;
   saveSettings(s: Settings): void;
   startSolo(cfg: SoloConfig): void;
+  startOnline(net: NetClient, roundsToWin: number): void;
   click(): void;
+}
+
+export function inviteLink(code: string): string {
+  return `${location.origin}${location.pathname}?room=${code}`;
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const SOLO_KEY = 'classic-strike.solo.v1';
@@ -56,8 +72,7 @@ export class Menus {
       fn();
     }, m);
     nav('Play Solo', () => this.solo()).focus();
-    const friend = nav('Play With a Friend', () => this.friend());
-    friend.append(el('small', '', 'online — in development'));
+    nav('Play With a Friend', () => this.friend());
     nav('Settings', () => this.settings(() => this.main()));
     nav('Controls', () => this.controls(() => this.main()));
     nav('About', () => this.about());
@@ -103,16 +118,131 @@ export class Menus {
     }, act).focus();
   }
 
-  friend(): void {
+  /**
+   * Play With a Friend: create a private room (code + invite link) or join
+   * one. Opening an invite link (?room=CODE) lands here and joins directly.
+   */
+  friend(joinCode?: string): void {
     const s = this.screen();
     const p = el('div', 'panel', undefined, s);
     el('h2', '', 'Play With a Friend', p);
-    el('p', 'note', 'Online play needs the Classic Strike game server, which is being built in the next milestone (private rooms, room codes, invite links, server-validated combat).', p);
-    el('p', 'note', 'Until it is deployed this screen does not pretend to connect anywhere. Single-player against bots is fully playable now.', p);
-    const r = row(p, 'Connection status');
-    el('span', '', 'Offline — no game server configured', r);
+
+    const status = el('span', '', 'Checking server…');
+    const statusRow = row(p, 'Connection status');
+    statusRow.append(status);
+    let serverUp = false;
+    fetch(serverHttpUrl('/healthz'), { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then(() => {
+        serverUp = true;
+        status.textContent = 'Game server online';
+      })
+      .catch(() => {
+        status.textContent = 'Game server unreachable — online play is unavailable right now. Solo play still works.';
+      });
+
+    const nameRow = row(p, 'Your name');
+    const name = el('input', '', undefined, nameRow);
+    name.type = 'text';
+    name.maxLength = 16;
+    name.value = this.host.settings.playerName;
+    const saveName = () => {
+      const v = name.value.trim().slice(0, 16) || 'Player';
+      if (v !== this.host.settings.playerName) this.host.saveSettings({ ...this.host.settings, playerName: v });
+      return v;
+    };
+
+    let team: Team | 'auto' = 'auto';
+    segmented(row(p, 'Your team (new room)'), [
+      { value: 'auto', label: 'Auto' },
+      { value: 'A', label: TEAM_NAME.A },
+      { value: 'D', label: TEAM_NAME.D },
+    ] as { value: Team | 'auto'; label: string }[], 'auto', (v) => (team = v));
+
+    const codeRow = row(p, 'Room code');
+    const code = el('input', '', undefined, codeRow);
+    code.type = 'text';
+    code.maxLength = 5;
+    code.placeholder = 'e.g. K7Q2M';
+    code.style.textTransform = 'uppercase';
+    code.value = joinCode ?? '';
+
+    const msg = el('p', 'note', '', p);
     const act = el('div', 'actions', undefined, p);
-    button('Back', 'btn', () => (this.host.click(), this.main()), act).focus();
+    button('Back', 'btn', () => (this.host.click(), this.main()), act);
+    const joinBtn = button('Join Room', 'btn', () => void go('join'), act);
+    const createBtn = button('Create Room', 'btn primary', () => void go('create'), act);
+
+    const go = async (kind: 'create' | 'join') => {
+      this.host.click();
+      const room = code.value.trim().toUpperCase();
+      if (kind === 'join' && !/^[A-Z2-9]{5}$/.test(room)) {
+        msg.textContent = 'Enter the 5-character room code your friend sent you.';
+        return;
+      }
+      createBtn.disabled = joinBtn.disabled = true;
+      msg.textContent = kind === 'create' ? 'Creating room…' : `Joining ${room}…`;
+      const net = new NetClient();
+      try {
+        if (kind === 'create') await net.create(saveName(), team);
+        else await net.join(room, saveName());
+        this.lobby(net);
+      } catch (e) {
+        net.close();
+        msg.textContent = (e as Error).message + (serverUp ? '' : ' (the game server looks unreachable)');
+        createBtn.disabled = joinBtn.disabled = false;
+      }
+    };
+    if (joinCode) void go('join');
+    else createBtn.focus();
+  }
+
+  /** Room lobby: code, invite link, who's here, and the button into the match. */
+  lobby(net: NetClient): void {
+    const s = this.screen();
+    const p = el('div', 'panel', undefined, s);
+    el('h2', '', `Room ${net.room}`, p);
+    const link = inviteLink(net.room);
+    const linkRow = row(p, 'Invitation link');
+    const linkInput = el('input', '', undefined, linkRow);
+    linkInput.type = 'text';
+    linkInput.readOnly = true;
+    linkInput.value = link;
+    linkInput.addEventListener('focus', () => linkInput.select());
+    const codeRow = row(p, 'Room code');
+    el('b', '', net.room, codeRow).style.cssText = 'font-size:20px;letter-spacing:3px;color:#fff';
+    const stRow = row(p, 'Connection status');
+    const st = el('span', '', 'Connected', stRow);
+    const playersRow = row(p, 'Players');
+    const list = el('div', '', undefined, playersRow);
+    const note = el('p', 'note', 'Send the link (or the code) to your friend. The match starts as soon as both of you are in — one player on each team.', p);
+    let roundsToWin = 8;
+    const render = (info: RoomInfo) => {
+      list.replaceChildren();
+      for (const pl of info.players) {
+        const line = el('div', '', `${pl.name}${pl.id === net.you ? ' (you)' : ''} — ${TEAM_NAME[pl.team]}${pl.connected ? '' : ' (disconnected)'}`, list);
+        line.style.color = pl.team === 'A' ? 'var(--a)' : 'var(--d)';
+      }
+      if (info.players.length < 2) note.textContent = 'Waiting for your friend… Send them the link or the code. You can enter the map now and warm up.';
+      else note.textContent = 'Both players are here. Enter the match!';
+    };
+    net.onMessage = (m) => {
+      if (m.t === 'room') render(m.info);
+      if (m.t === 'welcome') roundsToWin = m.roundsToWin;
+    };
+    net.onStatus = (status, detail) => (st.textContent = detail ?? status);
+    if (net.lastRoom) render(net.lastRoom);
+    const act = el('div', 'actions', undefined, p);
+    button('Leave', 'btn', () => {
+      this.host.click();
+      net.close();
+      this.main();
+    }, act);
+    const copyBtn = button('Copy Invitation Link', 'btn', async () => {
+      this.host.click();
+      copyBtn.textContent = (await copyText(link)) ? 'Copied!' : 'Copy failed — select the link';
+    }, act);
+    button('Enter Match', 'btn primary', () => (this.host.click(), this.host.startOnline(net, roundsToWin)), act).focus();
   }
 
   settings(back: () => void, overGame = false, onChange?: (s: Settings) => void): void {
@@ -188,18 +318,36 @@ export class Menus {
     button('Back', 'btn primary', () => (this.host.click(), this.main()), act).focus();
   }
 
-  pause(handlers: { resume(): void; settings(): void; controls(): void; restartRound(): void; restartMatch(): void; quit(): void }): void {
+  pause(handlers: { resume(): void; settings(): void; controls(): void; restartRound(): void; restartMatch(): void; quit(): void }, online?: { room: string; switchTeam(): void }): void {
     const s = this.screen(true);
     const m = el('div', 'panel', undefined, s);
-    m.style.width = '320px';
-    el('h2', '', 'Paused', m);
+    m.style.width = '360px';
+    el('h2', '', online ? `Menu — room ${online.room} (match continues)` : 'Paused', m);
     const b = (label: string, fn: () => void) => button(label, 'menu-btn', () => (this.host.click(), fn()), m);
     b('Resume', handlers.resume).focus();
     b('Settings', handlers.settings);
     b('Controls', handlers.controls);
-    b('Restart Round', handlers.restartRound);
-    b('Restart Match', handlers.restartMatch);
-    b('Main Menu', handlers.quit);
+    if (online) {
+      const copy = b('Copy Invitation Link', async () => {
+        copy.textContent = (await copyText(inviteLink(online.room))) ? 'Link copied' : inviteLink(online.room);
+      });
+      b('Switch Team (warmup only)', online.switchTeam);
+      b('Leave Match', handlers.quit);
+    } else {
+      b('Restart Round', handlers.restartRound);
+      b('Restart Match', handlers.restartMatch);
+      b('Main Menu', handlers.quit);
+    }
+  }
+
+  message(title: string, text: string, onOk: () => void): void {
+    const s = this.screen(true);
+    const p = el('div', 'panel', undefined, s);
+    p.style.width = '420px';
+    el('h2', '', title, p);
+    el('p', 'note', text, p);
+    const act = el('div', 'actions', undefined, p);
+    button('OK', 'btn primary', () => (this.host.click(), onOk()), act).focus();
   }
 
   matchEnd(winner: Team | null, me: Team, score: Record<Team, number>, handlers: { rematch(): void; quit(): void }): void {

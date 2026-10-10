@@ -77,6 +77,12 @@ export interface SimPlayer {
   lastHurt: number;
   respawnAt: number;
   cmd: PlayerCmd;
+  /**
+   * Network-driven player: moves only when one of its commands is run via
+   * runCmd(), never on its own during tick(). This keeps the server in lock
+   * step with the client's prediction regardless of packet timing.
+   */
+  external: boolean;
 }
 
 export type SimEvent =
@@ -184,6 +190,12 @@ export class Simulation {
   lastReason = '';
   private nextId = 1;
   private readonly rng: () => number;
+  /**
+   * Lag compensation (server only). Called before a shot is traced; may move
+   * other players back to where the shooter saw them, returning a function
+   * that restores them afterwards.
+   */
+  rewind: ((shooter: SimPlayer) => (() => void) | null) | null = null;
 
   constructor(map: MapData, config: Partial<MatchConfig> = {}, seed = Date.now()) {
     this.map = map;
@@ -197,9 +209,11 @@ export class Simulation {
 
   // ---------------------------------------------------------------- players
 
-  addPlayer(name: string, team: Team, isBot: boolean): SimPlayer {
+  /** `id` is only passed by network clients mirroring the server's ids. */
+  addPlayer(name: string, team: Team, isBot: boolean, id?: number): SimPlayer {
+    if (id !== undefined) this.nextId = Math.max(this.nextId, id + 1);
     const p: SimPlayer = {
-      id: this.nextId++,
+      id: id ?? this.nextId++,
       name,
       team,
       isBot,
@@ -232,6 +246,7 @@ export class Simulation {
       lastHurt: -10,
       respawnAt: 0,
       cmd: emptyCmd(),
+      external: false,
     };
     this.players.push(p);
     this.giveDefaultLoadout(p);
@@ -491,7 +506,12 @@ export class Simulation {
             this.spawn(p, Math.floor(this.rng() * 10));
           }
         }
-        if (this.teamSize('A') > 0 && this.teamSize('D') > 0) this.startMatch();
+        // Both teams present: start a match, or carry on the current one if a
+        // player rejoined after a disconnect.
+        if (this.teamSize('A') > 0 && this.teamSize('D') > 0) {
+          if (this.round === 0) this.startMatch();
+          else this.startRound();
+        }
         break;
       }
       case 'freeze':
@@ -525,9 +545,15 @@ export class Simulation {
     this.time += TICK_DT;
     this.updatePhase();
     for (const p of this.players) {
-      if (!p.alive) continue;
+      if (!p.alive || p.external) continue;
       this.tickPlayer(p);
     }
+  }
+
+  /** Runs one command for an external (networked) player within the current tick. */
+  runCmd(p: SimPlayer, cmd: PlayerCmd): void {
+    p.cmd = cmd;
+    if (p.alive) this.tickPlayer(p);
   }
 
   setCmd(p: SimPlayer, cmd: PlayerCmd): void {
@@ -643,6 +669,15 @@ export class Simulation {
 
   private melee(p: SimPlayer, def: WeaponDef, damage: number, cycle: number): void {
     p.nextFire = this.time + cycle;
+    const restore = this.rewind?.(p) ?? null;
+    try {
+      this.meleeTrace(p, def, damage);
+    } finally {
+      restore?.();
+    }
+  }
+
+  private meleeTrace(p: SimPlayer, def: WeaponDef, damage: number): void {
     const eye = this.eyePos(p);
     const dir = dirFromAngles(p.yaw, p.pitch);
     const tr = this.trace(p, eye, dir, def.range);
@@ -655,6 +690,16 @@ export class Simulation {
   private fire(p: SimPlayer, def: WeaponDef, w: WeaponState): void {
     w.mag--;
     p.nextFire = this.time + def.cycle;
+    const restore = this.rewind?.(p) ?? null;
+    try {
+      this.fireTraces(p, def);
+    } finally {
+      restore?.();
+    }
+    this.applyRecoil(p, def);
+  }
+
+  private fireTraces(p: SimPlayer, def: WeaponDef): void {
     const eye = this.eyePos(p);
     const spread = this.spreadOf(p);
     // Aim direction includes the current recoil punch (as in the classics,
@@ -671,7 +716,9 @@ export class Simulation {
         this.damageFrom(p, tr.victim, def.damage, tr.group!, tr.end, def, dist(eye, tr.end));
       }
     }
-    // Recoil.
+  }
+
+  private applyRecoil(p: SimPlayer, def: WeaponDef): void {
     p.shotsFired++;
     p.punchPitch = Math.min(def.kickMax, p.punchPitch + def.kick * (0.85 + this.rng() * 0.3));
     if (p.shotsFired > def.swayAfter) {

@@ -13,9 +13,9 @@ procedurally at runtime). Not affiliated with Valve or any other publisher.
 ## Run it
 
 ```bash
-cd classic-strike
 npm install
-npm run dev          # http://localhost:5180
+npm run dev          # client: http://localhost:5180 (solo works with just this)
+npm run dev:server   # game server on :8080 for "Play With a Friend" (vite proxies /ws to it)
 ```
 
 Requirements: Node 20+, a desktop browser with WebGL (current Chrome, Edge or
@@ -24,10 +24,12 @@ Firefox), keyboard and mouse.
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server with hot reload |
-| `npm run build` | Typecheck + production build to `dist/` (static files) |
+| `npm run build` | Typecheck + client build to `dist/` + server bundle to `dist-server/server.mjs` |
+| `npm start` | Run the built server (serves `dist/` and the WebSocket endpoint `/ws`) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit tests + headless bot-vs-bot matches (Vitest) |
-| `npm run e2e` | Browser smoke test (needs `npm run dev` running; uses Playwright Chromium) |
+| `npm run e2e` | Solo browser smoke test (needs `npm run dev` running; uses Playwright Chromium) |
+| `npm run e2e:mp` | Two-browser online test (needs `npm run build && PORT=8090 CS_DEBUG=1 npm start`, then `node tests/e2e/multiplayer.mjs http://127.0.0.1:8090`) |
 
 ## Controls
 
@@ -56,8 +58,13 @@ src/
   render/        Three.js: world builder, procedural textures, avatars,
                  first-person viewmodel, effects
   audio/         Web Audio synthesised sound effects (positional)
-  ui/            Menus, HUD, buy menu, scoreboard (plain DOM + CSS)
-tests/e2e/       Playwright browser tests
+    protocol.ts    client/server message types, snapshot encoding, input validation
+  net/           Browser networking: WebSocket client (+ reconnect), NetMirror
+                 (own-movement prediction + reconciliation, remote interpolation)
+  ui/            Menus, lobby, HUD, buy menu, scoreboard (plain DOM + CSS)
+server/          Node game server: HTTP (static client + /healthz) and WebSocket
+                 rooms, each running the shared Simulation authoritatively
+tests/e2e/       Playwright browser tests (solo + two-browser online)
 ```
 
 Key decisions:
@@ -74,7 +81,55 @@ Key decisions:
   bot navigation graph. Add a map by writing another `MapDef` and listing it in
   `MAPS`.
 - **No infrastructure for single-player.** It is a static site; no account,
-  database or server.
+  database or server. Solo keeps working when the game server is down.
+- **Authoritative server for online play.** Clients send only input commands
+  (validated and clamped), buy requests, team choice and rematch requests.
+  Movement, hits, damage, deaths, money and rounds are all computed by the
+  server's `Simulation`. Networked players move only when one of their
+  commands is processed, so client prediction replays exactly (unit-tested).
+  Shots are lag-compensated (others rewound by the shooter's RTT +
+  interpolation delay, max 0.5 s). Snapshots go out at 20 Hz; remote players
+  render 100 ms in the past.
+- **Plain `ws`, not Colyseus.** Two-player rooms with a shared simulation need
+  a few hundred lines of protocol, not a framework with its own state schema.
+- **Rooms live in memory** in a single process: run exactly one instance.
+
+## Online play
+
+Play With a Friend → Create Room gives a 5-character code and an invitation
+link (`/?room=CODE`). Opening the link joins directly; so does typing the code.
+The second player is put on the other team and the match starts when both are
+in. If a player drops, the round is lost for their team (elimination), and
+they can rejoin the same slot — score, money and kit preserved — by reloading
+the tab or reopening the link in the same tab within 2 minutes. Rematch is
+available from the match-end screen without leaving the room.
+
+## Deploy (Fly.io)
+
+One Fly app serves the client and runs the game server (same origin, so the
+invitation links and `wss://…/ws` just work).
+
+```bash
+fly auth login
+fly launch --copy-config --no-deploy   # first time: choose a unique app name + region
+fly deploy
+fly scale count 1                      # rooms are in memory: exactly one machine
+```
+
+Then open `https://<app>.fly.dev`. `fly.toml` stops the machine when nobody is
+connected and starts it on the next request (a few seconds' cold start).
+
+Environment variables (see `.env.example`):
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `PORT` | server | Listen port (Fly: 8080, set in `fly.toml`) |
+| `STATIC_DIR` | server | Built client directory (image: `/app/dist`) |
+| `ALLOWED_ORIGINS` | server | Optional comma-separated allow-list of page origins for WebSockets |
+| `CS_DEBUG` | server | Test-only teleport hook. **Never set in production.** |
+| `VITE_SERVER_URL` | client build | Only if the server is on a different origin, e.g. `wss://host/ws` |
+
+No secrets are required; nothing secret is shipped to the browser.
 
 ## Gameplay rules (current)
 
