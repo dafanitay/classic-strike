@@ -269,6 +269,7 @@ export class Menus {
     slider(p, 'Field of view', 75, 115, 1, s.fov, (v) => `${v}°`, (v) => ((s.fov = v), apply()));
     slider(p, 'Master volume', 0, 1, 0.05, s.masterVolume, (v) => `${Math.round(v * 100)}%`, (v) => ((s.masterVolume = v), apply()));
     slider(p, 'Effects volume', 0, 1, 0.05, s.sfxVolume, (v) => `${Math.round(v * 100)}%`, (v) => ((s.sfxVolume = v), apply()));
+    segmented(row(p, '3D audio (headphones)'), [{ value: 'yes', label: 'On' }, { value: 'no', label: 'Off' }], s.spatialAudio ? 'yes' : 'no', (v) => ((s.spatialAudio = v === 'yes'), apply()));
     segmented(row(p, 'Graphics quality'), [
       { value: 'low', label: 'Low' },
       { value: 'medium', label: 'Medium' },

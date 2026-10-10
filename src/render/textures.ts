@@ -50,6 +50,12 @@ const painters: Record<string, { size: number; world: number; paint: Painter }> 
       g.fillRect(0, 0, s, s);
       stains(g, s, r, 10, 'rgba(120,90,50,A)', 0.25);
       stains(g, s, r, 8, 'rgba(230,210,170,A)', 0.2);
+      // Wind ripples (wrapping sine bands so the texture still tiles).
+      for (let y = 0; y < s; y += 2) {
+        const v = Math.sin((y / s) * Math.PI * 2 * 9 + Math.sin((y / s) * Math.PI * 2 * 2) * 1.5);
+        g.fillStyle = v > 0 ? `rgba(240,220,180,${v * 0.06})` : `rgba(100,75,40,${-v * 0.07})`;
+        g.fillRect(0, y, s, 2);
+      }
       noise(g, s, r, 0.22);
     },
   },
@@ -75,6 +81,11 @@ const painters: Record<string, { size: number; world: number; paint: Painter }> 
       g.fillRect(0, 0, s, s);
       stains(g, s, r, 12, 'rgba(60,58,52,A)', 0.25);
       noise(g, s, r, 0.18);
+      // Aggregate speckle.
+      for (let i = 0; i < 260; i++) {
+        g.fillStyle = r() < 0.5 ? 'rgba(170,166,156,0.5)' : 'rgba(60,58,54,0.5)';
+        g.fillRect(r() * s, r() * s, 1, 1);
+      }
       g.strokeStyle = 'rgba(40,40,36,0.55)';
       g.lineWidth = 2;
       g.strokeRect(1, 1, s - 2, s - 2);
@@ -96,8 +107,13 @@ const painters: Record<string, { size: number; world: number; paint: Painter }> 
         g.fillRect(x * t, y * t, t, t);
       }
       noise(g, s, r, 0.15);
-      g.strokeStyle = 'rgba(50,42,32,0.7)';
-      g.lineWidth = 3;
+      // Chipped edges on a few tiles.
+      for (let i = 0; i < 6; i++) {
+        g.fillStyle = 'rgba(80,64,44,0.45)';
+        g.fillRect(Math.floor(r() * n) * t + (r() < 0.5 ? 3 : t - 9), Math.floor(r() * n) * t + r() * (t - 8), 6, 5);
+      }
+      g.strokeStyle = 'rgba(42,34,24,0.8)';
+      g.lineWidth = 4;
       for (let i = 0; i <= n; i++) {
         g.beginPath();
         g.moveTo(i * t, 0);
@@ -113,19 +129,49 @@ const painters: Record<string, { size: number; world: number; paint: Painter }> 
     // Sandstone blocks.
     size: 256, world: 4,
     paint: (g, s, r) => {
-      g.fillStyle = '#c2a477';
+      // Mortar first, then blocks inset from it.
+      g.fillStyle = '#8f7654';
       g.fillRect(0, 0, s, s);
       const rows = 8;
       const h = s / rows;
+      const bw = s / 4;
       for (let y = 0; y < rows; y++) {
         const off = y % 2 ? s / 8 : 0;
         for (let x = -1; x < 4; x++) {
           const k = 0.85 + r() * 0.25;
+          const x0 = x * bw + off + 2;
+          const y0 = y * h + 2;
           g.fillStyle = `rgb(${194 * k},${164 * k},${119 * k})`;
-          g.fillRect(x * (s / 4) + off + 2, y * h + 2, s / 4 - 4, h - 4);
+          g.fillRect(x0, y0, bw - 4, h - 4);
+          // Bevel: sunlit top edge, shaded bottom edge (the canvas is
+          // flipped on upload, so its top row is the top of the wall).
+          g.fillStyle = 'rgba(255,240,210,0.22)';
+          g.fillRect(x0, y0, bw - 4, 2);
+          g.fillStyle = 'rgba(40,28,15,0.3)';
+          g.fillRect(x0, y0 + h - 7, bw - 4, 3);
+          // Weathered corners.
+          if (r() < 0.35) {
+            g.fillStyle = 'rgba(70,52,32,0.35)';
+            g.fillRect(x0 + (r() < 0.5 ? 0 : bw - 12), y0 + r() * (h - 10), 8, 6);
+          }
         }
       }
       noise(g, s, r, 0.2);
+      // A few hairline cracks.
+      for (let i = 0; i < 5; i++) {
+        g.strokeStyle = `rgba(60,44,28,${0.25 + r() * 0.25})`;
+        g.lineWidth = 1;
+        g.beginPath();
+        let x = r() * s;
+        let y = r() * s;
+        g.moveTo(x, y);
+        for (let k = 0; k < 4; k++) {
+          x += (r() - 0.5) * 18;
+          y += r() * 12;
+          g.lineTo(x, y);
+        }
+        g.stroke();
+      }
       stains(g, s, r, 8, 'rgba(90,70,45,A)', 0.3);
       // Grime toward the bottom (texture v=0 is the floor line).
       const grad = g.createLinearGradient(0, s, 0, s * 0.55);

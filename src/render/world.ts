@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { BuiltBox, FloorKind, MapData } from '../shared/map';
+import { SKY_FLOOR, makeBaker } from './bake';
 import { labelTexture, surface } from './textures';
 
 /**
@@ -9,13 +10,32 @@ import { labelTexture, surface } from './textures';
  * from world position so textures line up seamlessly across boxes.
  */
 
-function boxGeometry(b: { min: THREE.Vector3Like; max: THREE.Vector3Like }, texWorld: number, faces?: ('px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz')[]): THREE.BufferGeometry {
+function boxGeometry(
+  b: { min: THREE.Vector3Like; max: THREE.Vector3Like },
+  texWorld: number,
+  faces?: ('px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz')[],
+  seg = 0,
+  rowsAt: number[] = [],
+): THREE.BufferGeometry {
   const w = b.max.x - b.min.x;
   const h = b.max.y - b.min.y;
   const d = b.max.z - b.min.z;
-  let geo: THREE.BufferGeometry = new THREE.BoxGeometry(w, h, d);
+  // Optional subdivision gives baked lighting vertices to live on: about
+  // `seg` metres across, plus vertex rows at the given heights (where the
+  // contact shadow fades out, where a roof starts) between bottom and top.
+  const n = (len: number) => (seg > 0 ? Math.max(1, Math.round(len / seg)) : 1);
+  const rows = [...new Set(rowsAt.filter((y) => y > b.min.y + 0.05 && y < b.max.y - 0.05))].sort((a, c) => a - c);
+  let geo: THREE.BufferGeometry = new THREE.BoxGeometry(w, h, d, n(w), rows.length + 1, n(d));
   geo.translate(b.min.x + w / 2, b.min.y + h / 2, b.min.z + d / 2);
   const pos = geo.getAttribute('position');
+  if (rows.length) {
+    // BoxGeometry spaces rows evenly; move each to its requested height.
+    const step = h / (rows.length + 1);
+    for (let i = 0; i < pos.count; i++) {
+      const k = Math.round((pos.getY(i) - b.min.y) / step);
+      if (k > 0 && k <= rows.length) pos.setY(i, rows[k - 1]);
+    }
+  }
   const nrm = geo.getAttribute('normal');
   const uv = geo.getAttribute('uv');
   for (let i = 0; i < pos.count; i++) {
@@ -53,11 +73,16 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   const group = new THREE.Group();
   const aniso = quality === 'high' ? 8 : quality === 'medium' ? 4 : 1;
   const shadows = quality !== 'low';
+  // Baked-light vertex spacing: coarser on low (corner-only floors), which
+  // keeps its triangle count close to the unbaked map.
+  const fine = quality === 'low' ? 2 : 1;
   const disposables: { dispose(): void }[] = [];
   const cs = map.def.cellSize;
+  const baker = makeBaker(map, shadows ? SKY_FLOOR.shadows : SKY_FLOOR.noShadows);
 
-  const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, cast: boolean, receive: boolean) => {
+  const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, cast: boolean, receive: boolean, baked = true) => {
     if (!geos.length) return;
+    if (baked) geos.forEach((g) => baker.apply(g));
     const merged = mergeGeometries(geos, false)!;
     geos.forEach((g) => g.dispose());
     const mesh = new THREE.Mesh(merged, mat);
@@ -68,8 +93,12 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
     group.add(mesh);
     disposables.push(merged, mat);
   };
-  const mat = (name: Parameters<typeof surface>[0], tint = 0xffffff) =>
-    new THREE.MeshLambertMaterial({ map: surface(name, aniso).map, color: tint });
+  // Relief: the colour texture doubles as a bump map (mortar, grout and
+  // cracks are darker, so they read as recessed). High quality only.
+  const mat = (name: Parameters<typeof surface>[0], tint = 0xffffff) => {
+    const tex = surface(name, aniso).map;
+    return new THREE.MeshLambertMaterial({ map: tex, color: tint, vertexColors: true, bumpMap: quality === 'high' ? tex : null, bumpScale: 1.5 });
+  };
 
   // ---- floors: one quad per area, grouped by floor kind
   const floorGeos: Record<FloorKind, THREE.BufferGeometry[]> = { sand: [], concrete: [], tile: [], dirt: [] };
@@ -82,7 +111,7 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
       if (ai < 0 || map.stairAt(x, z) >= 0) continue;
       const kind = map.def.areas[ai].floor;
       const h = map.cellCenter(x, z).y;
-      floorGeos[kind].push(boxGeometry({ min: { x: x * cs, y: h - 0.1, z: z * cs }, max: { x: (x + 1) * cs, y: h, z: (z + 1) * cs } }, surface(floorTex[kind]).worldSize, ['py']));
+      floorGeos[kind].push(boxGeometry({ min: { x: x * cs, y: h - 0.1, z: z * cs }, max: { x: (x + 1) * cs, y: h, z: (z + 1) * cs } }, surface(floorTex[kind]).worldSize, ['py'], fine));
     }
   }
   for (const kind of Object.keys(floorGeos) as FloorKind[]) addMerged(floorGeos[kind], mat(floorTex[kind]), false, true);
@@ -94,12 +123,23 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   const platformGeos: THREE.BufferGeometry[] = [];
   const stepGeos: THREE.BufferGeometry[] = [];
   const wallTex = surface('wall').worldSize;
+  // Heights where the light changes along a vertical face: just above each
+  // floor level (contact shadow) and at each roof's underside.
+  const roofs = map.boxes.filter((b) => b.kind === 'roof');
+  const floorYs = [0, ...(map.def.levels ?? []).map((l) => l.height)];
+  // Roof rows only on walls a roof touches (within 0.1 m horizontally).
+  const touches = (b: BuiltBox, r: BuiltBox) =>
+    b.min.x <= r.max.x + 0.1 && b.max.x >= r.min.x - 0.1 && b.min.z <= r.max.z + 0.1 && b.max.z >= r.min.z - 0.1;
+  const rowsFor = (b: BuiltBox) => [
+    ...floorYs.filter((y) => y >= b.min.y - 0.01).map((y) => y + 0.9),
+    ...roofs.filter((r) => touches(b, r)).flatMap((r) => [r.min.y - 0.08, r.min.y + 0.03]),
+  ];
   for (const b of map.boxes as BuiltBox[]) {
-    if (b.kind === 'wall') wallGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz', 'py']));
-    else if (b.kind === 'crate') crateGeos.push(boxGeometry(b, surface('crate').worldSize));
-    else if (b.kind === 'roof') roofGeos.push(boxGeometry(b, surface('roof').worldSize));
+    if (b.kind === 'wall') wallGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz', 'py'], 2 * fine, rowsFor(b)));
+    else if (b.kind === 'crate') crateGeos.push(boxGeometry(b, surface('crate').worldSize, undefined, 0.5 * fine, [b.min.y + 0.5]));
+    else if (b.kind === 'roof') roofGeos.push(boxGeometry(b, surface('roof').worldSize, undefined, 2 * fine));
     // Raised floors: only the sides (the top is the painted floor above).
-    else if (b.kind === 'platform') platformGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz']));
+    else if (b.kind === 'platform') platformGeos.push(boxGeometry(b, wallTex, ['px', 'nx', 'pz', 'nz'], 2 * fine));
     else if (b.kind === 'step') stepGeos.push(boxGeometry(b, surface('concrete').worldSize, ['px', 'nx', 'pz', 'nz', 'py']));
   }
   addMerged(wallGeos, mat('wall'), true, true);
@@ -116,7 +156,7 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
     if (b.kind !== 'platform') continue;
     lipGeos.push(boxGeometry({ min: { x: b.min.x - 0.02, y: b.max.y - 0.06, z: b.min.z - 0.02 }, max: { x: b.max.x + 0.02, y: b.max.y + 0.005, z: b.max.z + 0.02 } }, 2, ['px', 'nx', 'pz', 'nz']));
   }
-  addMerged(lipGeos, new THREE.MeshLambertMaterial({ color: 0x5a4a36 }), false, false);
+  addMerged(lipGeos, new THREE.MeshLambertMaterial({ color: 0x5a4a36 }), false, false, false);
 
   // ---- wall trim: a darker band at the top edge of every wall for readability
   const trimGeos: THREE.BufferGeometry[] = [];
@@ -124,11 +164,12 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
     if (b.kind !== 'wall') continue;
     trimGeos.push(boxGeometry({ min: { x: b.min.x - 0.05, y: b.max.y - 0.35, z: b.min.z - 0.05 }, max: { x: b.max.x + 0.05, y: b.max.y, z: b.max.z + 0.05 } }, 2, ['px', 'nx', 'pz', 'nz', 'py']));
   }
-  addMerged(trimGeos, new THREE.MeshLambertMaterial({ color: 0x6e5a40 }), false, false);
+  addMerged(trimGeos, new THREE.MeshLambertMaterial({ color: 0x6e5a40 }), false, false, false);
 
   // ---- landmarks: painted bombsite letters + direction signs
   const decal = (tex: THREE.Texture, size: number, pos: THREE.Vector3, rotX: number, rotY = 0) => {
-    const m = new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    // Painted colours stay as painted (no tone mapping), like the HUD.
+    const m = new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, toneMapped: false });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), m);
     mesh.position.copy(pos);
     mesh.rotation.set(rotX, rotY, 0, 'YXZ');
@@ -165,16 +206,27 @@ export function buildWorld(map: MapData, quality: 'low' | 'medium' | 'high'): Wo
   };
 }
 
-/** Simple vertex-coloured sky dome (no textures, no shaders). */
-export function buildSky(): THREE.Mesh {
-  const geo = new THREE.SphereGeometry(400, 24, 12);
+/**
+ * Vertex-coloured sky dome (no textures, no shaders): a dusty horizon, a
+ * deeper blue overhead and a warm glow around the sun, so the light in the
+ * scene has a visible source.
+ */
+export function buildSky(sunDir?: THREE.Vector3): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(400, 48, 24);
   const colors: number[] = [];
-  const top = new THREE.Color(0x6f95c2);
+  const top = new THREE.Color(0x5a86bd);
   const horizon = new THREE.Color(0xe0cfa8);
+  const glow = new THREE.Color(0xfff1d0);
+  const sun = sunDir?.clone().normalize();
   const pos = geo.getAttribute('position');
+  const p = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     const t = Math.max(0, pos.getY(i) / 400);
-    const c = horizon.clone().lerp(top, Math.pow(t, 0.6));
+    const c = horizon.clone().lerp(top, Math.pow(t, 0.55));
+    if (sun) {
+      const a = Math.max(0, p.fromBufferAttribute(pos, i).normalize().dot(sun));
+      c.lerp(glow, Math.min(1, Math.pow(a, 6) * 0.45 + Math.pow(a, 40) * 0.6));
+    }
     colors.push(c.r, c.g, c.b);
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));

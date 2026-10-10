@@ -131,6 +131,9 @@ export class GameSession {
       this.net.onStatus = (st, detail) => this.onNetStatus(st, detail);
     }
     this.renderer.viewmodel.setTeam(this.me.team);
+    // Sounds behind a wall are muffled (checked once per sound, from the ear
+    // to a point just above the source's feet / at its muzzle).
+    this.audio.occluder = (from, to) => !map.world.lineOfSight(from, { x: to.x, y: to.y + 0.6, z: to.z });
     this.input.yaw = this.me.yaw;
     this.applySettings(settings);
 
@@ -158,6 +161,7 @@ export class GameSession {
     this.input.invertY = s.invertY;
     this.hud.setCrosshair(s.crosshair);
     this.audio.setVolumes(s.masterVolume, s.sfxVolume);
+    this.audio.setHrtf(s.spatialAudio);
     if (qualityChanged) this.renderer.applyQuality(s.quality);
   }
 
@@ -178,6 +182,7 @@ export class GameSession {
     document.removeEventListener('visibilitychange', this.onVisibility);
     document.removeEventListener('keydown', this.onBuyKey);
     this.input.dispose();
+    this.audio.occluder = null;
     this.botDebug?.dispose();
     this.renderer.dispose();
     this.hud.show(false);

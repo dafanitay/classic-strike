@@ -26,6 +26,7 @@ Firefox), keyboard and mouse.
 | `npm test` | Unit tests + headless bot-vs-bot matches (Vitest) |
 | `npm run e2e` | Solo browser smoke test (needs `npm run dev` running; uses Playwright Chromium) |
 | `npm run e2e:feedback` | Browser checks for crosshair settings, hit marker, damage direction (needs `npm run dev`) |
+| `npm run e2e:audio` | Renders the real audio graph offline per ear: direction (time and level difference), turning, front/back, distance, walls, voice cap, clean-up (needs `npm run dev`) |
 | `npm run e2e:controls` | Weapon selection: keys 1/2/3 and numpad only; simulated Magic Mouse and wheel scrolling must never switch (needs `npm run dev`) |
 | `npm run e2e:elevation` | Walks up and down stairs with real key input and screenshots each raised area (needs `npm run dev`) |
 | `npm run e2e:botai` | Bot overlay (`?botdebug`) and bots spreading out in a browser match (needs `npm run dev`) |
@@ -43,6 +44,16 @@ Crouch is on **C**, not Ctrl, because Ctrl+W closes the browser tab.
 Weapons switch only with **1 / 2 / 3** (top row or numpad): the mouse wheel
 does nothing, because touch-surface mice such as the Apple Magic Mouse send
 wheel events whenever a finger moves on them.
+
+## Sound
+
+Other players' footsteps, shots, reloads and the bomb are positional. With
+headphones and **3D audio** on (Settings, default on) they use an HRTF, so
+you can tell left from right *and* in front from behind; turning your head
+moves them. Each kind of sound has its own range: footsteps are a close
+cue (clear within a few metres, gone past ~32 m), gunfire carries across
+the map. A wall between you and a sound muffles it. Walking (Shift) is
+silent to others, and crouch-walking makes no footsteps.
 
 ## Bomb defusal
 
