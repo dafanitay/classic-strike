@@ -1,6 +1,8 @@
 import type { Team } from '../shared/map';
 import { BUYABLE, WEAPONS, type WeaponId } from '../shared/weapons';
 import { EQUIPMENT, TEAM_NAME, type BuyItem, type SimPlayer, type Simulation } from '../shared/sim';
+import { DEFAULT_CROSSHAIR, type CrosshairSettings } from '../settings';
+import { crosshairLayout, type Rect } from './crosshair';
 import { button, el } from './dom';
 
 /**
@@ -31,6 +33,11 @@ export class Hud {
   private readonly killfeed: HTMLElement;
   private readonly cross: HTMLElement;
   private readonly crossParts: HTMLElement[];
+  private readonly crossDot: HTMLElement;
+  private xhair: CrosshairSettings = { ...DEFAULT_CROSSHAIR };
+  private readonly hitMarkerEl: HTMLElement;
+  private hitMarkerUntil = 0;
+  private readonly dmgDirs: { el: HTMLElement; until: number }[] = [];
   private readonly vignette: HTMLElement;
   private readonly scope: HTMLElement;
   private readonly spec: HTMLElement;
@@ -58,6 +65,11 @@ export class Hud {
 
     this.cross = el('div', 'crosshair', undefined, root);
     this.crossParts = ['t', 'b', 'l', 'r'].map((c) => el('i', c, undefined, this.cross));
+    this.crossDot = el('i', 'dot', undefined, this.cross);
+    this.hitMarkerEl = el('div', 'hitmarker', undefined, root);
+    for (const c of ['a', 'b', 'c', 'd']) el('i', c, undefined, this.hitMarkerEl);
+    const dmg = el('div', 'dmgdirs', undefined, root);
+    for (let i = 0; i < 4; i++) this.dmgDirs.push({ el: el('div', 'dmgdir', undefined, dmg), until: 0 });
 
     const top = el('div', 'hud-top', undefined, root);
     this.aliveA = el('span', 'alive a', '', top);
@@ -135,7 +147,30 @@ export class Hud {
 
   // --------------------------------------------------------------- per frame
 
-  update(sim: Simulation, me: SimPlayer, view: SimPlayer | null, now: number, opts: { crosshairGap: number; scoped: boolean; showCrosshair: boolean; location: string; hint: string; fps: number }): void {
+  setCrosshair(c: CrosshairSettings): void {
+    this.xhair = { ...c };
+    this.cache.delete(this.cross);
+  }
+
+  /** Brief hit confirmation at the crosshair: plain hit, headshot, or kill. */
+  hitMarker(kind: 'hit' | 'head' | 'kill', now: number): void {
+    this.hitMarkerEl.className = `hitmarker show ${kind}`;
+    this.hitMarkerUntil = now + (kind === 'kill' ? 0.35 : 0.18);
+  }
+
+  /**
+   * Red arc at the screen edge pointing to where damage came from.
+   * `relYaw` is the attacker's direction relative to the view (radians,
+   * positive = to the left), as in the simulation's yaw convention.
+   */
+  damageFrom(relYaw: number, now: number): void {
+    const slot = this.dmgDirs.reduce((a, b) => (a.until < b.until ? a : b));
+    slot.el.style.transform = `rotate(${-relYaw}rad)`;
+    slot.el.classList.add('show');
+    slot.until = now + 1.1;
+  }
+
+  update(sim: Simulation, me: SimPlayer, view: SimPlayer | null, now: number, opts: { spreadPx: number; scoped: boolean; showCrosshair: boolean; location: string; hint: string; fps: number }): void {
     const p = view ?? me;
     this.set(this.health, String(Math.max(0, Math.ceil(p.health))));
     this.toggle(this.health, 'low', p.health <= 25);
@@ -172,15 +207,32 @@ export class Hud {
     // Crosshair.
     this.toggle(this.cross, 'hidden', !opts.showCrosshair);
     if (opts.showCrosshair) {
-      const g = Math.round(opts.crosshairGap);
-      const key = String(g);
+      const layout = crosshairLayout(this.xhair, Math.min(opts.spreadPx, 120));
+      const key = JSON.stringify(layout);
       if (this.cache.get(this.cross) !== key) {
         this.cache.set(this.cross, key);
-        const [tp, bt, lf, rt] = this.crossParts;
-        tp.style.top = `${-g - 8}px`;
-        bt.style.top = `${g}px`;
-        lf.style.left = `${-g - 8}px`;
-        rt.style.left = `${g}px`;
+        const place = (e: HTMLElement, r: Rect | undefined) => {
+          e.style.display = r ? 'block' : 'none';
+          if (!r) return;
+          e.style.left = `${r.x}px`;
+          e.style.top = `${r.y}px`;
+          e.style.width = `${r.w}px`;
+          e.style.height = `${r.h}px`;
+          e.style.background = layout.color;
+          e.style.boxShadow = layout.outline ? '0 0 0 1px rgba(0,0,0,0.85)' : 'none';
+        };
+        this.crossParts.forEach((e, i) => place(e, layout.lines[i]));
+        place(this.crossDot, layout.dot ?? undefined);
+      }
+    }
+    if (this.hitMarkerUntil && now > this.hitMarkerUntil) {
+      this.hitMarkerUntil = 0;
+      this.hitMarkerEl.className = 'hitmarker';
+    }
+    for (const d of this.dmgDirs) {
+      if (d.until && now > d.until) {
+        d.until = 0;
+        d.el.classList.remove('show');
       }
     }
     this.toggle(this.scope, 'hidden', !opts.scoped);

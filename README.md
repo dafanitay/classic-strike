@@ -24,6 +24,7 @@ Firefox), keyboard and mouse.
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Unit tests + headless bot-vs-bot matches (Vitest) |
 | `npm run e2e` | Solo browser smoke test (needs `npm run dev` running; uses Playwright Chromium) |
+| `npm run e2e:feedback` | Browser checks for crosshair settings, hit marker, damage direction (needs `npm run dev`) |
 | `npm run e2e:mp` | Two-browser online test (needs `npm run build && PORT=8090 CS_DEBUG=1 npm start`, then `node tests/e2e/multiplayer.mjs http://127.0.0.1:8090`) |
 
 ## Controls

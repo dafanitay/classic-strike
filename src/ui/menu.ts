@@ -1,4 +1,5 @@
-import type { Settings } from '../settings';
+import { CROSSHAIR_COLORS, type CrosshairColor, type Settings } from '../settings';
+import { crosshairLayout } from './crosshair';
 import type { Difficulty } from '../shared/bot';
 import { MAPS } from '../shared/maps/depot';
 import type { Team } from '../shared/map';
@@ -249,7 +250,7 @@ export class Menus {
     const sc = this.screen(overGame);
     const p = el('div', 'panel', undefined, sc);
     el('h2', '', 'Settings', p);
-    const s = { ...this.host.settings };
+    const s = { ...this.host.settings, crosshair: { ...this.host.settings.crosshair } };
     const apply = () => {
       this.host.saveSettings({ ...s });
       onChange?.({ ...s });
@@ -274,6 +275,36 @@ export class Menus {
       { value: 'high', label: 'High' },
     ] as { value: Settings['quality']; label: string }[], s.quality, (v) => ((s.quality = v), apply()));
     el('p', 'note', 'Low disables shadows and anti-aliasing and renders at reduced resolution. Settings are saved in this browser.', p);
+
+    // ---- crosshair (with a live preview drawn by the in-game layout code)
+    el('h2', '', 'Crosshair', p).style.marginTop = '18px';
+    const preview = el('div', 'xhair-preview', undefined, p);
+    const centre = el('div', 'xhair-centre', undefined, preview);
+    const drawPreview = () => {
+      centre.replaceChildren();
+      const layout = crosshairLayout(s.crosshair, 6); // 6 px shows how a dynamic crosshair opens
+      for (const r of [...layout.lines, ...(layout.dot ? [layout.dot] : [])]) {
+        const i = el('i', '', undefined, centre);
+        i.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;background:${layout.color};${layout.outline ? 'box-shadow:0 0 0 1px rgba(0,0,0,.85)' : ''}`;
+      }
+    };
+    const xh = (f: () => void) => {
+      f();
+      drawPreview();
+      apply();
+    };
+    slider(p, 'Length', 0, 30, 1, s.crosshair.size, (v) => `${v}px`, (v) => xh(() => (s.crosshair.size = v)));
+    slider(p, 'Centre gap', 0, 20, 1, s.crosshair.gap, (v) => `${v}px`, (v) => xh(() => (s.crosshair.gap = v)));
+    slider(p, 'Thickness', 1, 6, 1, s.crosshair.thickness, (v) => `${v}px`, (v) => xh(() => (s.crosshair.thickness = v)));
+    segmented(row(p, 'Colour'), (Object.keys(CROSSHAIR_COLORS) as CrosshairColor[]).map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) })), s.crosshair.color, (v) => xh(() => (s.crosshair.color = v)));
+    const toggle = (label: string, key: 'dynamic' | 'dot' | 'outline', on: string, off: string) =>
+      segmented(row(p, label), [{ value: 'on', label: on }, { value: 'off', label: off }], s.crosshair[key] ? 'on' : 'off', (v) => xh(() => (s.crosshair[key] = v === 'on')));
+    toggle('Behaviour', 'dynamic', 'Dynamic', 'Static');
+    toggle('Centre dot', 'dot', 'On', 'Off');
+    toggle('Outline', 'outline', 'On', 'Off');
+    el('p', 'note', 'A dynamic crosshair opens up while you move, jump or spray, showing your current inaccuracy. A static one stays fixed.', p);
+    drawPreview();
+
     const act = el('div', 'actions', undefined, p);
     button('Back', 'btn primary', () => (this.host.click(), back()), act).focus();
   }
