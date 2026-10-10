@@ -1,0 +1,8 @@
+# After deterministic recoil (branch overhaul/m1-gunplay): same method as spray-baseline.txt. Divergence between seeds is now only the spread cone.
+# Note: comp=true still uses the live punch; with fixed patterns that equals the published pattern, so it is reachable by a player.
+{"id":"ar7","comp":false,"meanDivergenceDeg":0.15,"maxDivergenceDeg":0.32,"groupRadiusDeg":2.78,"lastShot":[-1.23,8.41]}
+{"id":"ar7","comp":true,"meanDivergenceDeg":0.15,"maxDivergenceDeg":0.32,"groupRadiusDeg":0.11,"lastShot":[-0.03,0.11]}
+{"id":"k4","comp":false,"meanDivergenceDeg":0.13,"maxDivergenceDeg":0.26,"groupRadiusDeg":1.96,"lastShot":[0.68,6.09]}
+{"id":"k4","comp":true,"meanDivergenceDeg":0.13,"maxDivergenceDeg":0.26,"groupRadiusDeg":0.09,"lastShot":[-0.02,0.09]}
+{"id":"mk5","comp":false,"meanDivergenceDeg":0.32,"maxDivergenceDeg":0.66,"groupRadiusDeg":1.2,"lastShot":[-0.06,4.33]}
+{"id":"mk5","comp":true,"meanDivergenceDeg":0.32,"maxDivergenceDeg":0.66,"groupRadiusDeg":0.24,"lastShot":[-0.06,0.23]}

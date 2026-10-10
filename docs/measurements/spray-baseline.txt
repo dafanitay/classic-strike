@@ -1,0 +1,7 @@
+# Baseline (commit 89c3c4b): 5 seeds, standing still, full magazine. comp=true uses an oracle that knows the hidden random punch (not available to a player).
+{"id":"ar7","comp":false,"meanDivergenceDeg":1.26,"maxDivergenceDeg":5.39,"groupRadiusDeg":2.89,"lastShot":[-0.9,8.68]}
+{"id":"ar7","comp":true,"meanDivergenceDeg":0.17,"maxDivergenceDeg":0.43,"groupRadiusDeg":0.13,"lastShot":[-0.04,0.07]}
+{"id":"k4","comp":false,"meanDivergenceDeg":0.71,"maxDivergenceDeg":2.73,"groupRadiusDeg":2.33,"lastShot":[-1.28,6.53]}
+{"id":"k4","comp":true,"meanDivergenceDeg":0.14,"maxDivergenceDeg":0.35,"groupRadiusDeg":0.11,"lastShot":[0.12,-0.12]}
+{"id":"mk5","comp":false,"meanDivergenceDeg":0.63,"maxDivergenceDeg":2.26,"groupRadiusDeg":1.66,"lastShot":[-0.89,4.5]}
+{"id":"mk5","comp":true,"meanDivergenceDeg":0.33,"maxDivergenceDeg":0.81,"groupRadiusDeg":0.24,"lastShot":[0.21,-0.22]}

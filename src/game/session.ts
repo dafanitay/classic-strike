@@ -4,10 +4,11 @@ import { GameRenderer } from '../render/renderer';
 import type { Settings } from '../settings';
 import { BotDirector, type Difficulty } from '../shared/bot';
 import { buildMap, type MapDef, type Team } from '../shared/map';
-import { eyeHeight } from '../shared/movement';
+import { PHYS, eyeHeight } from '../shared/movement';
 import { Simulation, TEAM_NAME, TICK_DT, emptyCmd, type BuyItem, type SimEvent, type SimPlayer } from '../shared/sim';
-import { lerp, type Vec3 } from '../shared/vec';
+import { angleDiff, lerp, type Vec3 } from '../shared/vec';
 import { WEAPONS, type WeaponSlot } from '../shared/weapons';
+import { spreadToPixels } from '../ui/crosshair';
 import { Hud } from '../ui/hud';
 import type { NetClient, NetStatus } from '../net/client';
 import { NetMirror } from '../net/mirror';
@@ -67,6 +68,9 @@ export class GameSession {
   private disposed = false;
   private prev = new Map<number, Vec3>();
   private eyeSmooth = 1.6;
+  /** Camera-only smoothing of step-ups so climbing stairs doesn't jolt the view. */
+  private stepOffset = 0;
+  private lastViewY = 0;
   private deathTime = -1;
   private killerId = 0;
   private spectateId = 0;
@@ -142,6 +146,7 @@ export class GameSession {
     this.settings = s;
     this.input.sensitivity = s.sensitivity;
     this.input.invertY = s.invertY;
+    this.hud.setCrosshair(s.crosshair);
     this.audio.setVolumes(s.masterVolume, s.sfxVolume);
     if (qualityChanged) this.renderer.applyQuality(s.quality);
   }
@@ -489,8 +494,18 @@ export class GameSession {
         }
         case 'hit': {
           this.renderer.effects.blood(ev.pos);
-          if (ev.attacker === me.id) this.audio.hitConfirm(ev.group === 'head');
-          if (ev.victim === me.id) this.audio.hurt();
+          if (ev.attacker === me.id) {
+            this.audio.hitConfirm(ev.group === 'head');
+            this.hud.hitMarker(ev.group === 'head' ? 'head' : 'hit', now);
+          }
+          if (ev.victim === me.id) {
+            this.audio.hurt();
+            const attacker = sim.getPlayer(ev.attacker);
+            if (attacker && attacker !== me) {
+              const toAttacker = Math.atan2(-(attacker.body.pos.x - me.body.pos.x), -(attacker.body.pos.z - me.body.pos.z));
+              this.hud.damageFrom(angleDiff(toAttacker, this.input.yaw), now);
+            }
+          }
           break;
         }
         case 'kill': {
@@ -498,6 +513,7 @@ export class GameSession {
           const killer = sim.getPlayer(ev.killer);
           if (!victim) break;
           this.hud.kill(killer, victim, ev.weapon, ev.headshot, ev.killer === me.id || ev.victim === me.id, now);
+          if (ev.killer === me.id && victim !== me) this.hud.hitMarker('kill', now);
           this.audio.death(victim === me ? undefined : victim.body.pos);
           if (victim === me) {
             this.deathTime = sim.time;
@@ -639,7 +655,11 @@ export class GameSession {
         pos.z += this.mirror.correction.z;
       }
       this.eyeSmooth += (eyeHeight(me.body) - this.eyeSmooth) * Math.min(1, dt * 14);
-      cam.position.set(pos.x, pos.y + this.eyeSmooth, pos.z);
+      const dy = pos.y - this.lastViewY;
+      if (me.body.onGround && dy > 0.02 && dy < PHYS.stepHeight + 0.05) this.stepOffset -= dy;
+      this.lastViewY = pos.y;
+      this.stepOffset *= Math.exp(-dt * 14);
+      cam.position.set(pos.x, pos.y + this.eyeSmooth + this.stepOffset, pos.z);
       cam.rotation.set(this.input.pitch + me.punchPitch * 0.6, this.input.yaw + me.punchYaw * 0.6, 0);
       const def = sim.weaponOf(me);
       if (def.scope && me.scope > 0) {
@@ -700,7 +720,7 @@ export class GameSession {
     const def = sim.weaponOf(hp);
     const spread = sim.spreadOf(hp);
     const vfov = (cam.fov * Math.PI) / 180;
-    const gap = 3 + (Math.tan(spread) / Math.tan(vfov / 2)) * (window.innerHeight / 2);
+    const spreadPx = spreadToPixels(spread, vfov, window.innerHeight);
     let hint = '';
     if (me.alive && sim.canBuy(me) && !this.hud.buyOpen) hint = 'Press B to open the buy menu';
     if (sim.phase === 'warmup') {
@@ -709,7 +729,7 @@ export class GameSession {
         : 'Warmup — waiting for players';
     }
     this.hud.update(sim, me, view, performance.now() / 1000, {
-      crosshairGap: Math.min(gap, 140),
+      spreadPx,
       scoped,
       showCrosshair: (me.alive || !!view) && !scoped && def.cls !== 'sniper',
       location: sim.map.areaNameAt((view ?? me).body.pos),

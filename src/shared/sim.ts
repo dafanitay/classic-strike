@@ -1,6 +1,7 @@
 import { rayAabb } from './collision';
 import type { MapData, Team } from './map';
 import { PHYS, bodyHeight, eyeHeight, makeBody, stepMovement, type MoveBody } from './movement';
+import { expandPattern, patternStep, type RecoilOffset } from './recoil';
 import { add, clamp, dirFromAngles, dist, makeRng, scale, type Vec3 } from './vec';
 import {
   BUYABLE,
@@ -67,7 +68,6 @@ export interface SimPlayer {
   shotsFired: number;
   punchPitch: number;
   punchYaw: number;
-  swayDir: number;
   fireHeld: boolean;
   altHeld: boolean;
   scope: number;
@@ -144,6 +144,17 @@ export const EQUIPMENT = {
 } as const;
 export type EquipmentId = keyof typeof EQUIPMENT;
 export type BuyItem = WeaponId | EquipmentId;
+
+const patternCache = new Map<WeaponId, RecoilOffset[]>();
+/** The expanded, per-shot spray pattern of a weapon (cached). */
+export function sprayPattern(def: WeaponDef): RecoilOffset[] {
+  let p = patternCache.get(def.id);
+  if (!p) {
+    p = expandPattern(def.recoilPattern, Math.max(1, def.magSize));
+    patternCache.set(def.id, p);
+  }
+  return p;
+}
 
 function cloneWeapons(w: SimPlayer['weapons']): SimPlayer['weapons'] {
   const out: SimPlayer['weapons'] = {};
@@ -236,7 +247,6 @@ export class Simulation {
       shotsFired: 0,
       punchPitch: 0,
       punchYaw: 0,
-      swayDir: 1,
       fireHeld: false,
       altHeld: false,
       scope: 0,
@@ -321,10 +331,10 @@ export class Simulation {
     const moveFrac = clamp((speed - 0.8) / (PHYS.maxSpeed - 0.8), 0, 1);
     let s: number;
     if (def.scope && p.scope > 0) s = def.scope.scopedSpread + def.spreadMove * moveFrac * 1.5;
-    else s = def.spreadBase + def.spreadMove * moveFrac + p.spreadAccum;
+    else s = def.spreadBase + def.spreadMove * moveFrac + Math.min(p.spreadAccum, def.spreadMax);
     if (!p.body.onGround) s += def.spreadAir;
     if (p.body.crouched && p.body.onGround) s *= def.crouchFactor;
-    return Math.min(s, def.spreadMax + def.spreadAir);
+    return s;
   }
 
   isReloading(p: SimPlayer): boolean {
@@ -595,8 +605,10 @@ export class Simulation {
     p.reloadEnd = 0;
     p.scope = 0;
     p.rescopeAt = 0;
-    p.switchEnd = this.time + 0.45;
+    p.switchEnd = this.time + WEAPONS[p.weapons[slot]!.id].drawTime;
     p.shotsFired = 0;
+    p.punchPitch = 0;
+    p.punchYaw = 0;
     p.spreadAccum = 0;
     this.events.push({ type: 'switch', player: p.id, weapon: p.weapons[slot]!.id });
   }
@@ -607,12 +619,24 @@ export class Simulation {
     const w = p.weapons[p.current];
     const def = this.weaponOf(p);
 
-    // Recoil and spread recovery.
-    const rec = def.recoilRecovery * dt * (cmd.fire ? 0.35 : 1);
-    p.punchPitch = Math.max(0, p.punchPitch - rec);
-    p.punchYaw = Math.sign(p.punchYaw) * Math.max(0, Math.abs(p.punchYaw) - rec);
+    // Recoil recovery. While a spray continues (the next shot comes as soon
+    // as the weapon cycles) recoil is held exactly on the pattern; once the
+    // shooter pauses, punch and pattern position decay together toward the
+    // start, so tapping and short bursts stay accurate. Deterministic: it
+    // depends only on timing, never on the RNG.
+    const spraying = p.shotsFired > 0 && this.time <= p.nextFire + 2 * TICK_DT;
+    if (!spraying && p.shotsFired > 0) {
+      const k = Math.exp(-dt / def.recoilTau);
+      p.punchPitch *= k;
+      p.punchYaw *= k;
+      p.shotsFired *= k;
+      if (p.shotsFired < 0.05) {
+        p.shotsFired = 0;
+        p.punchPitch = 0;
+        p.punchYaw = 0;
+      }
+    }
     p.spreadAccum = Math.max(0, p.spreadAccum - def.spreadRecovery * dt);
-    if (!cmd.fire && this.time > p.nextFire + 0.1) p.shotsFired = Math.max(0, p.shotsFired - dt * 12);
 
     // Reload completion.
     if (p.reloadEnd > 0 && this.time >= p.reloadEnd && w) {
@@ -719,12 +743,11 @@ export class Simulation {
   }
 
   private applyRecoil(p: SimPlayer, def: WeaponDef): void {
-    p.shotsFired++;
-    p.punchPitch = Math.min(def.kickMax, p.punchPitch + def.kick * (0.85 + this.rng() * 0.3));
-    if (p.shotsFired > def.swayAfter) {
-      if (this.rng() < 0.18) p.swayDir = -p.swayDir;
-      p.punchYaw = clamp(p.punchYaw + def.sway * p.swayDir * (0.6 + this.rng() * 0.8), -def.kickMax * 0.6, def.kickMax * 0.6);
-    }
+    // Move the view to the next point of the weapon's fixed spray pattern.
+    const step = patternStep(sprayPattern(def), p.shotsFired);
+    p.punchYaw += step.yaw;
+    p.punchPitch += step.pitch;
+    p.shotsFired = Math.floor(p.shotsFired) + 1;
     p.spreadAccum = Math.min(def.spreadMax, p.spreadAccum + def.spreadPerShot);
     if (def.scope && p.scope > 0) {
       p.rescopeLevel = p.scope;
