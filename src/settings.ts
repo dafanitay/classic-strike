@@ -36,6 +36,8 @@ export interface Settings {
   fov: number; // horizontal degrees
   masterVolume: number; // 0..1
   sfxVolume: number; // 0..1
+  /** Headphone 3D audio (HRTF): front/back as well as left/right. */
+  spatialAudio: boolean;
   quality: Quality;
   playerName: string;
   crosshair: CrosshairSettings;
@@ -47,6 +49,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fov: 90,
   masterVolume: 0.7,
   sfxVolume: 0.8,
+  spatialAudio: true,
   quality: 'medium',
   playerName: 'Player',
   crosshair: { ...DEFAULT_CROSSHAIR },
@@ -68,6 +71,7 @@ export function loadSettings(): Settings {
     s.sfxVolume = clampNum(s.sfxVolume, 0, 1, DEFAULT_SETTINGS.sfxVolume);
     if (!['low', 'medium', 'high'].includes(s.quality)) s.quality = DEFAULT_SETTINGS.quality;
     s.invertY = !!s.invertY;
+    s.spatialAudio = s.spatialAudio !== false;
     s.playerName = String(s.playerName || 'Player').slice(0, 16);
     return s;
   } catch {

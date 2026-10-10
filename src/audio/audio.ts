@@ -1,28 +1,57 @@
 import type { WeaponClass, WeaponId } from '../shared/weapons';
 import type { Vec3 } from '../shared/vec';
+import { PROFILES, admit, attenuation, listenerAxes, type SoundKind } from './spatial';
 
 /**
  * Every sound is synthesised at runtime with the Web Audio API (filtered
  * noise + oscillators), so there are no third-party audio assets and
  * nothing to license. The AudioContext is only created after a user
  * gesture, per browser autoplay rules.
+ *
+ * Positional sounds (other players' steps, shots, reloads, the bomb, ...)
+ * go through an HRTF panner, so with headphones they come from the right
+ * direction all around you, front and back included; the listener follows
+ * the camera every frame. Loudness by distance is applied by us per kind
+ * of sound (spatial.ts) rather than by the panner, a wall between you and
+ * the source muffles it (quieter + low-passed, never silenced), finished
+ * sounds are disconnected, and the number of simultaneous sounds is capped.
  */
 export class GameAudio {
-  private ctx: AudioContext | null = null;
+  private ctx: BaseAudioContext | null = null;
   private master!: GainNode;
   private sfx!: GainNode;
   private noise!: AudioBuffer;
   private masterVol = 0.7;
   private sfxVol = 0.8;
+  private hrtf = true;
+  private readonly listenerPos: Vec3 = { x: 0, y: 0, z: 0 };
+  private readonly voices: { nodes: AudioNode[]; end: number }[] = [];
+  /** Returns true when something solid is between the two points (set by the session). */
+  occluder: ((from: Vec3, to: Vec3) => boolean) | null = null;
+
+  /** For tests: drive the same graph on an OfflineAudioContext. */
+  static offline(ctx: BaseAudioContext): GameAudio {
+    const a = new GameAudio();
+    a.init(ctx);
+    return a;
+  }
 
   /** Call from a click/keydown handler. Safe to call repeatedly. */
   unlock(): void {
     if (!this.ctx) {
       try {
-        this.ctx = new AudioContext();
+        this.init(new AudioContext());
       } catch {
         return; // no audio support: game stays silent
       }
+    }
+    const live = this.ctx as AudioContext;
+    if (live.state === 'suspended' && typeof live.resume === 'function') void live.resume();
+  }
+
+  private init(ctx: BaseAudioContext): void {
+    {
+      this.ctx = ctx;
       const comp = this.ctx.createDynamicsCompressor();
       comp.threshold.value = -14;
       comp.ratio.value = 6;
@@ -37,7 +66,16 @@ export class GameAudio {
       for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
       this.setVolumes(this.masterVol, this.sfxVol);
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+  }
+
+  /** Headphone 3D audio (HRTF). Off = plain left/right panning. */
+  setHrtf(on: boolean): void {
+    this.hrtf = on;
+  }
+
+  /** Positional sounds currently connected (for tests / diagnostics). */
+  get activeVoices(): number {
+    return this.voices.length;
   }
 
   setVolumes(master: number, sfx: number): void {
@@ -48,12 +86,17 @@ export class GameAudio {
     this.sfx.gain.value = sfx;
   }
 
-  /** Update the listener from the camera each frame. */
+  /** Update the listener from the camera each frame (also frees finished sounds). */
   setListener(pos: Vec3, yaw: number): void {
     if (!this.ctx) return;
+    this.listenerPos.x = pos.x;
+    this.listenerPos.y = pos.y;
+    this.listenerPos.z = pos.z;
+    this.sweep();
     const l = this.ctx.listener;
-    const fx = -Math.sin(yaw);
-    const fz = -Math.cos(yaw);
+    const { forward } = listenerAxes(yaw);
+    const fx = forward.x;
+    const fz = forward.z;
     if (l.positionX) {
       l.positionX.value = pos.x;
       l.positionY.value = pos.y;
@@ -70,21 +113,60 @@ export class GameAudio {
     }
   }
 
-  /** Output node: positional when `pos` is given, otherwise straight to the mix. */
-  private out(pos?: Vec3): AudioNode {
+  /**
+   * Output node for one sound: straight to the mix for your own sounds (no
+   * `pos`), otherwise panner -> distance gain -> (wall low-pass) -> mix.
+   * Returns null when the sound is out of earshot or too many are playing.
+   * `dur` is how long the sound lasts (s), after which its nodes are freed.
+   */
+  private out(pos: Vec3 | undefined, kind: SoundKind, dur: number): AudioNode | null {
     const ctx = this.ctx!;
     if (!pos) return this.sfx;
+    const prof = PROFILES[kind];
+    const d = Math.hypot(pos.x - this.listenerPos.x, pos.y - this.listenerPos.y, pos.z - this.listenerPos.z);
+    let gain = attenuation(prof, d);
+    if (gain < 0.002 || !admit(kind, this.voices.length)) return null;
+    const occluded = d > 1.5 && !!this.occluder?.(this.listenerPos, pos);
+    if (occluded) gain *= prof.occludedGain;
     const p = ctx.createPanner();
-    p.panningModel = 'equalpower';
-    p.distanceModel = 'inverse';
-    p.refDistance = 2.5;
-    p.rolloffFactor = 1.1;
-    p.maxDistance = 200;
+    p.panningModel = this.hrtf ? 'HRTF' : 'equalpower';
+    p.distanceModel = 'linear';
+    p.rolloffFactor = 0; // loudness by distance is ours (above), the panner only places it
+    p.refDistance = 1;
+    p.maxDistance = 10000;
     p.positionX.value = pos.x;
     p.positionY.value = pos.y;
     p.positionZ.value = pos.z;
-    p.connect(this.sfx);
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    p.connect(g);
+    const nodes: AudioNode[] = [p, g];
+    if (occluded) {
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = prof.occludedCutoff;
+      g.connect(lp).connect(this.sfx);
+      nodes.push(lp);
+    } else {
+      g.connect(this.sfx);
+    }
+    this.voices.push({ nodes, end: ctx.currentTime + dur + 0.25 });
     return p;
+  }
+
+  /** Disconnects the nodes of sounds that have finished. */
+  private sweep(): void {
+    const now = this.ctx!.currentTime;
+    for (let i = this.voices.length - 1; i >= 0; i--) {
+      if (this.voices[i].end > now) continue;
+      for (const n of this.voices[i].nodes) n.disconnect();
+      this.voices.splice(i, 1);
+    }
+  }
+
+  /** Test hook: free finished sounds now. */
+  flushFinished(): void {
+    if (this.ctx) this.sweep();
   }
 
   private noiseBurst(dest: AudioNode, t: number, dur: number, gain: number, type: BiquadFilterType, freq: number, q = 0.8, endFreq?: number): void {
@@ -122,7 +204,8 @@ export class GameAudio {
   gunshot(cls: WeaponClass, id: WeaponId, pos?: Vec3, distance = 0): void {
     if (!this.ctx || cls === 'melee') return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'gunshot', cls === 'sniper' || cls === 'shotgun' ? 0.9 : 0.4);
+    if (!dest) return;
     // Distant shots lose their crack (high end) and keep the boom.
     const far = Math.min(1, distance / 50);
     const crack = 1 - far * 0.85;
@@ -148,25 +231,31 @@ export class GameAudio {
   footstep(pos?: Vec3, surface: 'sand' | 'hard' = 'hard'): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'footstep', 0.12);
+    if (!dest) return;
     if (surface === 'sand') this.noiseBurst(dest, t, 0.09, 0.35, 'lowpass', 900, 0.7, 300);
     else {
       this.noiseBurst(dest, t, 0.05, 0.35, 'bandpass', 1300 + Math.random() * 400, 1.2, 600);
       this.tone(dest, t, 0.05, 0.15, 'sine', 160, 90);
     }
+    // A short high scuff on top: real footsteps have it, and it's what lets
+    // the ears (and the HRTF) place a step left/right and front/back.
+    this.noiseBurst(dest, t + 0.004, 0.025, surface === 'sand' ? 0.12 : 0.16, 'bandpass', 3600 + Math.random() * 1200, 1.4);
   }
 
   land(pos?: Vec3): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'land', 0.15);
+    if (!dest) return;
     this.noiseBurst(dest, t, 0.12, 0.5, 'lowpass', 700, 0.7, 150);
   }
 
   reload(duration: number, pos?: Vec3): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'reload', duration + 0.1);
+    if (!dest) return;
     const click = (at: number, f: number, g = 0.35) => {
       this.noiseBurst(dest, t + at, 0.04, g, 'bandpass', f, 3);
       this.tone(dest, t + at, 0.03, g * 0.4, 'square', f * 0.5, f * 0.4);
@@ -191,7 +280,8 @@ export class GameAudio {
   knife(hit: boolean, pos?: Vec3): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'knife', 0.3);
+    if (!dest) return;
     this.noiseBurst(dest, t, 0.18, 0.3, 'bandpass', 1200, 1.5, 4000);
     if (hit) this.noiseBurst(dest, t + 0.06, 0.08, 0.5, 'lowpass', 600, 1, 200);
   }
@@ -214,7 +304,8 @@ export class GameAudio {
   death(pos?: Vec3): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'death', 0.55);
+    if (!dest) return;
     this.tone(dest, t, 0.35, 0.25, 'sawtooth', 220, 90);
     this.noiseBurst(dest, t + 0.3, 0.2, 0.5, 'lowpass', 300, 1, 80);
   }
@@ -233,7 +324,8 @@ export class GameAudio {
   bombBeep(pos: Vec3): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'bomb', 0.12);
+    if (!dest) return;
     this.tone(dest, t, 0.09, 0.35, 'square', 1950, 1950);
   }
 
@@ -241,7 +333,8 @@ export class GameAudio {
   bombAction(kind: 'plant' | 'defuse', pos?: Vec3): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'action', kind === 'plant' ? 2.2 : 0.4);
+    if (!dest) return;
     if (kind === 'plant') {
       [0, 0.35, 0.7, 1.05, 1.4, 1.75, 2.1].forEach((at, i) => this.tone(dest, t + at, 0.07, 0.16, 'square', 1100 + (i % 3) * 180, 1100 + (i % 3) * 180));
     } else {
@@ -253,7 +346,8 @@ export class GameAudio {
   explosion(pos: Vec3, distance: number): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos);
+    const dest = this.out(pos, 'explosion', 2.8);
+    if (!dest) return;
     const near = 1 - Math.min(1, distance / 80);
     this.noiseBurst(dest, t, 1.8, 1.6, 'lowpass', 1200 * (0.4 + near), 0.6, 60);
     this.tone(dest, t, 1.2, 1.2, 'sine', 90, 28);

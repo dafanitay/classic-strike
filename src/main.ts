@@ -14,6 +14,8 @@ const canvas = document.getElementById('game') as HTMLCanvasElement;
 const hudRoot = document.getElementById('hud') as HTMLElement;
 const screens = document.getElementById('screens') as HTMLElement;
 const audio = new GameAudio();
+// Test hook (only with ?debug): lets browser tests render the real audio graph offline.
+if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __GameAudio: typeof GameAudio }).__GameAudio = GameAudio;
 let settings: Settings = loadSettings();
 let session: GameSession | null = null;
 
