@@ -1,5 +1,6 @@
 import './ui/styles.css';
 import { GameAudio } from './audio/audio';
+import { buildSoundBank } from './audio/soundBank';
 import { GameSession, type SessionMode } from './game/session';
 import type { NetClient } from './net/client';
 import { MAPS } from './shared/maps/depot';
@@ -15,7 +16,11 @@ const hudRoot = document.getElementById('hud') as HTMLElement;
 const screens = document.getElementById('screens') as HTMLElement;
 const audio = new GameAudio();
 // Test hook (only with ?debug): lets browser tests render the real audio graph offline.
-if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __GameAudio: typeof GameAudio }).__GameAudio = GameAudio;
+if (new URLSearchParams(location.search).has('debug')) {
+  const w = window as unknown as { __GameAudio: typeof GameAudio; __buildSoundBank: typeof buildSoundBank };
+  w.__GameAudio = GameAudio;
+  w.__buildSoundBank = buildSoundBank;
+}
 let settings: Settings = loadSettings();
 let session: GameSession | null = null;
 

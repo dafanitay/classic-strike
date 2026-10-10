@@ -87,6 +87,8 @@ export class GameSession {
   private fpsT = 0;
   private fps = 0;
   private readonly shotThisTick = new Set<number>();
+  /** Shooters whose bullet-impact sound already played this tick (a shotgun fires 8 pellets). */
+  private readonly impactThisTick = new Set<number>();
   private readonly showFps = new URLSearchParams(location.search).has('debug');
   private readonly tmpV = new THREE.Vector3();
   private predNextFire = 0;
@@ -407,6 +409,15 @@ export class GameSession {
     this.renderer.muzzleLight.position.set(eye.x, eye.y - 0.1, eye.z);
   }
 
+  /** What a bullet hit, for its impact sound: crates are wood, the rest stone. */
+  private surfaceAt(p: Vec3, n: Vec3): 'concrete' | 'wood' {
+    const q = { x: p.x - n.x * 0.05, y: p.y - n.y * 0.05, z: p.z - n.z * 0.05 };
+    const box = this.sim.map.boxes.find(
+      (b) => q.x >= b.min.x && q.x <= b.max.x && q.y >= b.min.y && q.y <= b.max.y && q.z >= b.min.z && q.z <= b.max.z,
+    );
+    return box?.kind === 'crate' ? 'wood' : 'concrete';
+  }
+
   private onNetMessage(m: ServerMsg): void {
     const now = performance.now() / 1000;
     switch (m.t) {
@@ -462,6 +473,7 @@ export class GameSession {
     const me = this.me;
     const now = performance.now() / 1000;
     this.shotThisTick.clear();
+    this.impactThisTick.clear();
     const eye = sim.eyePos(me);
     for (const ev of events) {
       switch (ev.type) {
@@ -488,7 +500,13 @@ export class GameSession {
             }
             if (def.pellets === 1 || Math.random() < 0.3) this.renderer.effects.tracer(muzzle.clone(), ev.end);
           }
-          if (ev.hitWorld && ev.normal) this.renderer.effects.impact(ev.end, ev.normal);
+          if (ev.hitWorld && ev.normal) {
+            this.renderer.effects.impact(ev.end, ev.normal);
+            if (!this.impactThisTick.has(ev.shooter)) {
+              this.impactThisTick.add(ev.shooter);
+              this.audio.impact(this.surfaceAt(ev.end, ev.normal), ev.end);
+            }
+          }
           break;
         }
         case 'melee': {
@@ -500,6 +518,7 @@ export class GameSession {
         }
         case 'hit': {
           this.renderer.effects.blood(ev.pos);
+          if (ev.attacker !== me.id && ev.victim !== me.id) this.audio.bodyHit(ev.group === 'head', ev.pos);
           if (ev.attacker === me.id) {
             this.audio.hitConfirm(ev.group === 'head');
             this.hud.hitMarker(ev.group === 'head' ? 'head' : 'hit', now);

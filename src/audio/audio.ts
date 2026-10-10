@@ -1,5 +1,6 @@
 import type { WeaponClass, WeaponId } from '../shared/weapons';
 import type { Vec3 } from '../shared/vec';
+import { buildSoundBank, type GunSoundId, type SoundBank } from './soundBank';
 import { PROFILES, admit, attenuation, listenerAxes, type SoundKind } from './spatial';
 
 /**
@@ -26,6 +27,9 @@ export class GameAudio {
   private hrtf = true;
   private readonly listenerPos: Vec3 = { x: 0, y: 0, z: 0 };
   private readonly voices: { nodes: AudioNode[]; end: number }[] = [];
+  /** Pre-rendered gunshots and impacts (soundBank.ts); null until rendered. */
+  private bank: SoundBank | null = null;
+  private bankLoading: Promise<void> | null = null;
   /** Returns true when something solid is between the two points (set by the session). */
   occluder: ((from: Vec3, to: Vec3) => boolean) | null = null;
 
@@ -47,6 +51,47 @@ export class GameAudio {
     }
     const live = this.ctx as AudioContext;
     if (live.state === 'suspended' && typeof live.resume === 'function') void live.resume();
+    void this.loadBank();
+  }
+
+  /**
+   * Renders the weapon and impact sounds once (in the background); until
+   * they are ready, the simpler live-synthesised versions play instead.
+   */
+  loadBank(): Promise<void> {
+    if (!this.ctx || typeof OfflineAudioContext === 'undefined') return Promise.resolve();
+    this.bankLoading ??= buildSoundBank(this.ctx.sampleRate)
+      .then((b) => {
+        this.bank = b;
+      })
+      .catch(() => {
+        /* keep the synthesised fallback */
+      });
+    return this.bankLoading;
+  }
+
+  /** True once the pre-rendered sounds are in use (for tests). */
+  get bankReady(): boolean {
+    return this.bank !== null;
+  }
+
+  /** Plays one buffer (a random variant), optionally through a low-pass. */
+  private playBuffer(variants: AudioBuffer[], dest: AudioNode, t: number, gain: number, lowpass = 0, rate = 0.97 + Math.random() * 0.06): void {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = variants[Math.floor(Math.random() * variants.length)];
+    src.playbackRate.value = rate;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    let node: AudioNode = src;
+    if (lowpass > 0) {
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = lowpass;
+      node = node.connect(f);
+    }
+    node.connect(g).connect(dest);
+    src.start(t);
   }
 
   private init(ctx: BaseAudioContext): void {
@@ -204,10 +249,19 @@ export class GameAudio {
   gunshot(cls: WeaponClass, id: WeaponId, pos?: Vec3, distance = 0): void {
     if (!this.ctx || cls === 'melee') return;
     const t = this.ctx.currentTime;
-    const dest = this.out(pos, 'gunshot', cls === 'sniper' || cls === 'shotgun' ? 0.9 : 0.4);
+    const bank = this.bank?.gun[id as GunSoundId];
+    const dest = this.out(pos, 'gunshot', bank ? bank[0].duration : cls === 'sniper' || cls === 'shotgun' ? 0.9 : 0.4);
     if (!dest) return;
     // Distant shots lose their crack (high end) and keep the boom.
     const far = Math.min(1, distance / 50);
+    if (bank) {
+      // Air takes the top end off with distance; far away, the slap back
+      // off the buildings arrives as a separate, duller echo.
+      const cutoff = far > 0 ? 18000 * (1 - far) ** 2 + 900 : 0;
+      this.playBuffer(bank, dest, t, pos ? 1 : 0.85, cutoff);
+      if (far > 0.35) this.playBuffer(bank, dest, t + 0.1 + far * 0.25, 0.3 * far, 900);
+      return;
+    }
     const crack = 1 - far * 0.85;
     const P: Record<Exclude<WeaponClass, 'melee'>, [number, number, number, number, number]> = {
       // [crack freq, crack dur, boom freq, boom dur, gain]
@@ -286,10 +340,33 @@ export class GameAudio {
     if (hit) this.noiseBurst(dest, t + 0.06, 0.08, 0.5, 'lowpass', 600, 1, 200);
   }
 
+  /** A bullet hitting the world: positional, at the impact point. */
+  impact(surface: 'concrete' | 'wood', pos: Vec3): void {
+    if (!this.ctx || !this.bank) return;
+    const t = this.ctx.currentTime;
+    const ricochet = surface === 'concrete' && Math.random() < 0.12;
+    const dest = this.out(pos, 'impact', ricochet ? 0.6 : 0.3);
+    if (!dest) return;
+    this.playBuffer(this.bank.impact[surface], dest, t, 0.8);
+    if (ricochet) this.playBuffer(this.bank.impact.ricochet, dest, t + 0.01, 0.6);
+  }
+
+  /** A bullet hitting a player, heard by everyone nearby (not the shooter or victim). */
+  bodyHit(headshot: boolean, pos: Vec3): void {
+    if (!this.ctx || !this.bank) return;
+    const dest = this.out(pos, 'impact', 0.5);
+    if (!dest) return;
+    this.playBuffer(this.bank.impact[headshot ? 'head' : 'flesh'], dest, this.ctx.currentTime, 0.9);
+  }
+
   /** Feedback when *you* hit someone (also played for a headshot "tink"). */
   hitConfirm(headshot: boolean): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    if (this.bank) {
+      this.playBuffer(this.bank.impact[headshot ? 'head' : 'flesh'], this.sfx, t, headshot ? 0.5 : 0.55, 0, 1);
+      return;
+    }
     if (headshot) this.tone(this.sfx, t, 0.12, 0.25, 'triangle', 2600, 1800);
     else this.noiseBurst(this.sfx, t, 0.06, 0.25, 'lowpass', 500, 1, 200);
   }
@@ -297,6 +374,7 @@ export class GameAudio {
   hurt(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    if (this.bank) this.playBuffer(this.bank.impact.flesh, this.sfx, t, 0.6, 2500, 0.85);
     this.noiseBurst(this.sfx, t, 0.12, 0.6, 'lowpass', 400, 1, 120);
     this.tone(this.sfx, t, 0.15, 0.25, 'sine', 120, 70);
   }
