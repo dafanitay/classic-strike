@@ -28,6 +28,8 @@ Firefox), keyboard and mouse.
 | `npm run e2e:feedback` | Browser checks for crosshair settings, hit marker, damage direction (needs `npm run dev`) |
 | `npm run e2e:controls` | Weapon selection: keys 1/2/3 and numpad only; simulated Magic Mouse and wheel scrolling must never switch (needs `npm run dev`) |
 | `npm run e2e:elevation` | Walks up and down stairs with real key input and screenshots each raised area (needs `npm run dev`) |
+| `npm run e2e:botai` | Bot overlay (`?botdebug`) and bots spreading out in a browser match (needs `npm run dev`) |
+| `node --import ./scripts/register-ts.mjs scripts/bot-metrics.ts normal 5 8` | Headless bot behaviour metrics (spread, routes, stuck time) |
 | `npm run e2e:bomb` | Plants with the E key, checks the HUD and fuse, defuses, and screenshots each step (needs `npm run dev`) |
 | `npm run e2e:mp` | Two-browser online test (needs `npm run build && PORT=8090 CS_DEBUG=1 npm start`, then `node tests/e2e/multiplayer.mjs http://127.0.0.1:8090`) |
 
@@ -73,6 +75,7 @@ src/
     map.ts         grid-carved map format -> collision boxes
     maps/depot.ts  the "Depot" map
     nav.ts         A* over the map grid + string pulling (bot navigation)
+    tactics.ts     map reading for bots: alternative routes, scored positions
     sim.ts         authoritative fixed-tick simulation: players, shooting,
                    damage, rounds, economy, buying
     bot.ts         bot AI (perception, reaction, aim, cover, team plans, buying)

@@ -1,0 +1,44 @@
+Bot behaviour AFTER the M4 AI work (branch overhaul/m4-bots), and the old AI re-measured
+with the same harness and window (5-25 s into each live round; spawn points sit
+2 m apart, so the first seconds are excluded). scripts/bot-metrics.ts <difficulty> 5 8.
+Headless 5v5, first to 5, seeds 1..8. Measured 2026-10-10.
+
+=== BEFORE (old AI) ===
+easy, 5v5, seeds 1..8 (2.2 s)
+matches 8, rounds 7.3, round length 27 s, kills/round 6.8, timeouts 0.3
+early A: nearest teammate 1.8 m, within 3 m 84%, areas 1.39, biggest group 3.69, lanes/round 1.51
+early D: nearest teammate 6.8 m, within 3 m 46%, areas 1.88, biggest group 2.28
+stuck (pressing keys, not moving) 153.2 bot-seconds/match, left the map 0 ticks
+normal, 5v5, seeds 1..8 (2.8 s)
+matches 8, rounds 7.5, round length 18 s, kills/round 7.0, timeouts 0.0
+early A: nearest teammate 5.9 m, within 3 m 40%, areas 1.98, biggest group 2.38, lanes/round 1.59
+early D: nearest teammate 9.9 m, within 3 m 31%, areas 2.53, biggest group 1.88
+stuck (pressing keys, not moving) 46.4 bot-seconds/match, left the map 0 ticks
+hard, 5v5, seeds 1..8 (1.8 s)
+matches 8, rounds 5.9, round length 11 s, kills/round 6.5, timeouts 0.0
+early A: nearest teammate 5.1 m, within 3 m 54%, areas 2.09, biggest group 2.56, lanes/round 1.41
+early D: nearest teammate 14.3 m, within 3 m 21%, areas 2.12, biggest group 1.44
+stuck (pressing keys, not moving) 6.7 bot-seconds/match, left the map 0 ticks
+
+=== AFTER (new AI, after the review fixes and the Middle pillar fix D4) ===
+easy, 5v5, seeds 1..8 (2.8 s)
+matches 8, rounds 6.1, round length 31 s, kills/round 7.1, timeouts 0.0
+early A: nearest teammate 13.6 m, within 3 m 15%, areas 2.90, biggest group 1.49, lanes/round 2.74
+early D: nearest teammate 13.9 m, within 3 m 10%, areas 2.70, biggest group 1.40
+whole A: nearest teammate 11.5 m, within 3 m 22%, areas 2.72, biggest group 1.73, lanes/round 2.74
+whole D: nearest teammate 11.5 m, within 3 m 14%, areas 2.69, biggest group 1.61
+stuck (pressing keys, not moving) 9.8 bot-seconds/match, left the map 0 ticks
+normal, 5v5, seeds 1..8 (3.9 s)
+matches 8, rounds 6.1, round length 31 s, kills/round 7.1, timeouts 0.0
+early A: nearest teammate 14.1 m, within 3 m 8%, areas 3.03, biggest group 1.33, lanes/round 2.71
+early D: nearest teammate 15.7 m, within 3 m 6%, areas 2.60, biggest group 1.22
+whole A: nearest teammate 11.9 m, within 3 m 15%, areas 2.81, biggest group 1.62, lanes/round 2.71
+whole D: nearest teammate 13.4 m, within 3 m 10%, areas 2.53, biggest group 1.41
+stuck (pressing keys, not moving) 10.7 bot-seconds/match, left the map 0 ticks
+hard, 5v5, seeds 1..8 (3.4 s)
+matches 8, rounds 5.6, round length 25 s, kills/round 6.6, timeouts 0.0
+early A: nearest teammate 14.6 m, within 3 m 11%, areas 3.04, biggest group 1.38, lanes/round 2.76
+early D: nearest teammate 16.3 m, within 3 m 6%, areas 2.39, biggest group 1.17
+whole A: nearest teammate 12.5 m, within 3 m 16%, areas 2.86, biggest group 1.67, lanes/round 2.76
+whole D: nearest teammate 12.6 m, within 3 m 12%, areas 2.48, biggest group 1.47
+stuck (pressing keys, not moving) 7.9 bot-seconds/match, left the map 0 ticks

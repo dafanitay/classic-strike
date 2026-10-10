@@ -52,8 +52,12 @@ export const DEPOT: MapDef = {
     // Long A doors: leaves a single 2 m gap at z = 3.
     { x: 17, z: 2 },
     { x: 17, z: 4 },
-    // Pillar in Middle breaks the Mid -> Mid Doors sightline.
+    // Pillar in Middle breaks the Mid -> Mid Doors sightline. Mid Doors is
+    // two cells wide (z 14-15), so the pillar must be too: with only z = 14
+    // filled, the z = 15 row was a straight 60 m line from spawn to spawn
+    // (bots on hard killed attackers in their spawn 0.1 s into the round).
     { x: 21, z: 14 },
+    { x: 21, z: 15 },
   ],
   crates: [
     { x: 29, z: 4 }, { x: 30, z: 4 }, { x: 31, z: 7, tall: true }, { x: 28, z: 8 }, { x: 35, z: 3, tall: true },

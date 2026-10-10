@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { GameAudio } from '../audio/audio';
+import { BotDebugView } from '../render/botDebug';
 import { GameRenderer } from '../render/renderer';
 import type { Settings } from '../settings';
 import { BotDirector, type Difficulty } from '../shared/bot';
@@ -49,6 +50,8 @@ export interface SessionUi {
 export class GameSession {
   readonly sim: Simulation;
   readonly bots: BotDirector | null;
+  /** Bot AI overlay, only with `?botdebug` in the URL (solo). */
+  private botDebug: BotDebugView | null = null;
   readonly net: NetClient | null;
   readonly mirror: NetMirror | null;
   roomInfo: RoomInfo | null = null;
@@ -110,6 +113,11 @@ export class GameSession {
       this.me = this.sim.addPlayer(settings.playerName || 'Player', team, false);
       for (let i = 0; i < cfg.teammates; i++) this.sim.addPlayer(BotDirector.botName(team, i), team, true);
       for (let i = 0; i < cfg.opponents; i++) this.sim.addPlayer(BotDirector.botName(enemy, i), enemy, true);
+      const flag = new URLSearchParams(location.search).get('botdebug');
+      if (flag !== null && flag !== '0' && flag !== 'false') {
+        this.botDebug = new BotDebugView(hudRoot);
+        this.renderer.scene.add(this.botDebug.group);
+      }
     } else {
       this.sim = new Simulation(map, { roundsToWin: mode.roundsToWin });
       this.bots = null;
@@ -170,6 +178,7 @@ export class GameSession {
     document.removeEventListener('visibilitychange', this.onVisibility);
     document.removeEventListener('keydown', this.onBuyKey);
     this.input.dispose();
+    this.botDebug?.dispose();
     this.renderer.dispose();
     this.hud.show(false);
     this.net?.close();
@@ -782,6 +791,8 @@ export class GameSession {
       fps: this.showFps ? this.fps : 0,
     });
 
+    const nowS = performance.now() / 1000;
+    if (this.botDebug && this.bots && this.botDebug.due(nowS)) this.botDebug.update(this.bots.debugState(), nowS);
     r.render(showViewmodel);
   }
 }

@@ -1,0 +1,24 @@
+Bot behaviour BEFORE the M4 AI work (branch overhaul/m4-bots at c9a73b2).
+scripts/bot-metrics.ts <difficulty> 5 8 — headless 5v5, first to 5, seeds 1..8. 2026-10-10.
+
+easy, 5v5, seeds 1..8 (2.3 s)
+matches 8, rounds 7.3, round length 27 s, kills/round 6.8, timeouts 0.3
+early A: nearest teammate 2.0 m, within 3 m 80%, areas 1.48, biggest group 3.77, lanes/round 1.51
+early D: nearest teammate 6.1 m, within 3 m 39%, areas 1.97, biggest group 2.43
+whole A: nearest teammate 1.9 m, within 3 m 81%, areas 1.43, biggest group 3.70, lanes/round 1.51
+whole D: nearest teammate 5.6 m, within 3 m 45%, areas 1.88, biggest group 2.53
+stuck (pressing keys, not moving) 153.2 bot-seconds/match, left the map 0 ticks
+normal, 5v5, seeds 1..8 (2.9 s)
+matches 8, rounds 7.5, round length 18 s, kills/round 7.0, timeouts 0.0
+early A: nearest teammate 5.2 m, within 3 m 45%, areas 1.98, biggest group 2.68, lanes/round 1.59
+early D: nearest teammate 8.3 m, within 3 m 28%, areas 2.54, biggest group 2.03
+whole A: nearest teammate 5.3 m, within 3 m 45%, areas 1.98, biggest group 2.68, lanes/round 1.59
+whole D: nearest teammate 8.3 m, within 3 m 28%, areas 2.54, biggest group 2.03
+stuck (pressing keys, not moving) 46.4 bot-seconds/match, left the map 0 ticks
+hard, 5v5, seeds 1..8 (1.8 s)
+matches 8, rounds 5.9, round length 11 s, kills/round 6.5, timeouts 0.0
+early A: nearest teammate 4.2 m, within 3 m 61%, areas 1.98, biggest group 3.02, lanes/round 1.41
+early D: nearest teammate 9.4 m, within 3 m 18%, areas 2.18, biggest group 1.83
+whole A: nearest teammate 4.2 m, within 3 m 61%, areas 1.98, biggest group 3.02, lanes/round 1.41
+whole D: nearest teammate 9.4 m, within 3 m 18%, areas 2.18, biggest group 1.83
+stuck (pressing keys, not moving) 6.7 bot-seconds/match, left the map 0 ticks

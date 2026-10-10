@@ -18,6 +18,7 @@
     "e2e:feedback": "node tests/e2e/feedback.mjs",
     "e2e:elevation": "node tests/e2e/elevation.mjs",
     "e2e:bomb": "node tests/e2e/bomb.mjs",
+    "e2e:botai": "node tests/e2e/botai.mjs",
     "e2e:controls": "node tests/e2e/controls.mjs"
   },
   "dependencies": {
