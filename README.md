@@ -26,6 +26,7 @@ Firefox), keyboard and mouse.
 | `npm test` | Unit tests + headless bot-vs-bot matches (Vitest) |
 | `npm run e2e` | Solo browser smoke test (needs `npm run dev` running; uses Playwright Chromium) |
 | `npm run e2e:feedback` | Browser checks for crosshair settings, hit marker, damage direction (needs `npm run dev`) |
+| `npm run e2e:controls` | Weapon selection: keys 1/2/3 and numpad only; simulated Magic Mouse and wheel scrolling must never switch (needs `npm run dev`) |
 | `npm run e2e:elevation` | Walks up and down stairs with real key input and screenshots each raised area (needs `npm run dev`) |
 | `npm run e2e:bomb` | Plants with the E key, checks the HUD and fuse, defuses, and screenshots each step (needs `npm run dev`) |
 | `npm run e2e:mp` | Two-browser online test (needs `npm run build && PORT=8090 CS_DEBUG=1 npm start`, then `node tests/e2e/multiplayer.mjs http://127.0.0.1:8090`) |
@@ -33,10 +34,13 @@ Firefox), keyboard and mouse.
 ## Controls
 
 WASD move · mouse aim · LMB fire · RMB scope / heavy stab · Space jump ·
-Shift walk (silent) · C crouch · R reload · 1/2/3, wheel, Q weapons ·
+Shift walk (silent) · C crouch · R reload · 1/2/3 weapons ·
 B buy menu · E (hold) plant / defuse · Tab scoreboard · Esc pause (releases the mouse).
 
 Crouch is on **C**, not Ctrl, because Ctrl+W closes the browser tab.
+Weapons switch only with **1 / 2 / 3** (top row or numpad): the mouse wheel
+does nothing, because touch-surface mice such as the Apple Magic Mouse send
+wheel events whenever a finger moves on them.
 
 ## Bomb defusal
 
