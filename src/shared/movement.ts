@@ -20,6 +20,8 @@ export const PHYS = {
   airAccelerate: 10,
   airWishCap: 30 * U,
   maxSpeed: 250 * U,
+  /** Ledges up to this height are climbed by walking (classic 18 units). */
+  stepHeight: 18 * U,
   walkScale: 0.52,
   crouchScale: 0.34,
   halfWidth: 16 * U,
@@ -140,11 +142,31 @@ export function stepMovement(world: CollisionWorld, b: MoveBody, input: MoveInpu
 
   const wasAirborne = !b.onGround;
   const fallSpeed = -b.vel.y;
-  const res = world.moveHull(b.pos, PHYS.halfWidth, bodyHeight(b), {
-    x: b.vel.x * dt,
-    y: b.vel.y * dt,
-    z: b.vel.z * dt,
-  });
+  const start = { ...b.pos };
+  const delta = { x: b.vel.x * dt, y: b.vel.y * dt, z: b.vel.z * dt };
+  let res = world.moveHull(b.pos, PHYS.halfWidth, bodyHeight(b), delta);
+
+  // Step up (as in the classic StepSlideMove): if a grounded, non-jumping
+  // move was blocked, retry it lifted by the step height and then set back
+  // down. Keep whichever attempt got further. This is what lets players walk
+  // up stairs and onto low ledges without jumping.
+  if (res.hitWall && !wasAirborne && !jumped) {
+    const p2 = { ...start };
+    world.moveHull(p2, PHYS.halfWidth, bodyHeight(b), { x: 0, y: PHYS.stepHeight, z: 0 });
+    const lifted = p2.y - start.y;
+    if (lifted > 0.01) {
+      const side = world.moveHull(p2, PHYS.halfWidth, bodyHeight(b), { x: delta.x, y: 0, z: delta.z });
+      const down = world.moveHull(p2, PHYS.halfWidth, bodyHeight(b), { x: 0, y: -(lifted + 0.05), z: 0 });
+      const stepped = Math.hypot(p2.x - start.x, p2.z - start.z);
+      const plain = Math.hypot(b.pos.x - start.x, b.pos.z - start.z);
+      if (down.onGround && stepped > plain + 1e-6) {
+        b.pos.x = p2.x;
+        b.pos.y = p2.y;
+        b.pos.z = p2.z;
+        res = { onGround: true, hitWall: side.hitWall, hitCeiling: false };
+      }
+    }
+  }
   b.vel.y -= PHYS.gravity * dt * 0.5;
 
   if (res.onGround) {

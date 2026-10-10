@@ -4,7 +4,7 @@ import { GameRenderer } from '../render/renderer';
 import type { Settings } from '../settings';
 import { BotDirector, type Difficulty } from '../shared/bot';
 import { buildMap, type MapDef, type Team } from '../shared/map';
-import { eyeHeight } from '../shared/movement';
+import { PHYS, eyeHeight } from '../shared/movement';
 import { Simulation, TEAM_NAME, TICK_DT, emptyCmd, type BuyItem, type SimEvent, type SimPlayer } from '../shared/sim';
 import { angleDiff, lerp, type Vec3 } from '../shared/vec';
 import { WEAPONS, type WeaponSlot } from '../shared/weapons';
@@ -68,6 +68,9 @@ export class GameSession {
   private disposed = false;
   private prev = new Map<number, Vec3>();
   private eyeSmooth = 1.6;
+  /** Camera-only smoothing of step-ups so climbing stairs doesn't jolt the view. */
+  private stepOffset = 0;
+  private lastViewY = 0;
   private deathTime = -1;
   private killerId = 0;
   private spectateId = 0;
@@ -652,7 +655,11 @@ export class GameSession {
         pos.z += this.mirror.correction.z;
       }
       this.eyeSmooth += (eyeHeight(me.body) - this.eyeSmooth) * Math.min(1, dt * 14);
-      cam.position.set(pos.x, pos.y + this.eyeSmooth, pos.z);
+      const dy = pos.y - this.lastViewY;
+      if (me.body.onGround && dy > 0.02 && dy < PHYS.stepHeight + 0.05) this.stepOffset -= dy;
+      this.lastViewY = pos.y;
+      this.stepOffset *= Math.exp(-dt * 14);
+      cam.position.set(pos.x, pos.y + this.eyeSmooth + this.stepOffset, pos.z);
       cam.rotation.set(this.input.pitch + me.punchPitch * 0.6, this.input.yaw + me.punchYaw * 0.6, 0);
       const def = sim.weaponOf(me);
       if (def.scope && me.scope > 0) {

@@ -138,3 +138,14 @@ server-side bots — all additive to the current design.
   pattern for running shots.
 - Prediction, server and bot tests keep passing; build + browser smoke
   pass.
+
+## Progress on branch `overhaul/m1-gunplay` (local, not pushed)
+
+| Improvement | Status | Evidence |
+|---|---|---|
+| 1. Deterministic recoil patterns | Done | divergence 1.26°/5.39° → 0.15°/0.32° (`docs/measurements/`); 8 unit tests |
+| 2. Crosshair settings, hit marker, damage direction | Done | 8 unit tests; `tests/e2e/feedback.mjs` 6/6 |
+| 3. Step-up movement (stairs/ledges ≤ 0.457 m) | Done (engine only) | 3 unit tests; prediction exactness test still passes. The current Depot map has no ledges this low, so gameplay on it is unchanged until the map pass adds stairs. |
+
+Not measured yet: feel and frame rate on real hardware; nothing on this
+branch has been played by a human or deployed.

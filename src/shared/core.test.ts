@@ -69,6 +69,47 @@ describe('movement', () => {
     expect(c.pos.x).toBeGreaterThanOrEqual(1 + PHYS.halfWidth - 1e-9);
   });
 
+  it('walks up a step no taller than the step height, without jumping', () => {
+    for (const [h, ok] of [[0.3, true], [PHYS.stepHeight - 0.01, true], [0.6, false]] as const) {
+      const step = { min: { x: -2, y: 0, z: -20 }, max: { x: 2, y: h, z: -1.5 } };
+      const w = flatWorld([step]);
+      const b = makeBody({ x: 0, y: 0, z: 0 });
+      for (let i = 0; i < 90; i++) stepMovement(w, b, { ...idle(), forward: 1 }, PHYS.maxSpeed, TICK_DT);
+      expect(b.pos.y > h - 0.01, `step ${h}`).toBe(ok);
+      if (ok) expect(b.pos.z).toBeLessThan(-3); // kept walking on top
+    }
+  });
+
+  it('climbs a staircase at nearly full speed and walks back down it', () => {
+    const steps = Array.from({ length: 6 }, (_, i) => ({ min: { x: -2, y: 0, z: -2 - (i + 1) * 0.5 }, max: { x: 2, y: 0.3 * (i + 1), z: -2 - i * 0.5 } }));
+    // A landing at the top.
+    steps.push({ min: { x: -2, y: 0, z: -12 }, max: { x: 2, y: 1.8, z: -5 } });
+    const w = flatWorld(steps);
+    const b = makeBody({ x: 0, y: 0, z: 0 });
+    let t = 0;
+    while (b.pos.z > -6.5 && t < 300) {
+      stepMovement(w, b, { ...idle(), forward: 1 }, PHYS.maxSpeed, TICK_DT);
+      t++;
+    }
+    expect(b.pos.y).toBeCloseTo(1.8, 2);
+    // 6.5 m at ~6.35 m/s plus acceleration: well under 2 s, i.e. not stuck on steps.
+    expect(t / 60).toBeLessThan(1.6);
+    for (let i = 0; i < 200; i++) stepMovement(w, b, { ...idle(), forward: -1 }, PHYS.maxSpeed, TICK_DT);
+    expect(b.pos.y).toBeLessThan(0.01);
+    expect(b.pos.z).toBeGreaterThan(-1);
+  });
+
+  it('does not step while jumping or into a ceiling-height gap', () => {
+    // A low slot: step 0.3 m high but only 1.5 m of headroom above it.
+    const step = { min: { x: -2, y: 0, z: -20 }, max: { x: 2, y: 0.3, z: -1.5 } };
+    const ceiling = { min: { x: -2, y: 1.8, z: -20 }, max: { x: 2, y: 3, z: -1.5 } };
+    const w = flatWorld([step, ceiling]);
+    const b = makeBody({ x: 0, y: 0, z: 0 });
+    for (let i = 0; i < 90; i++) stepMovement(w, b, { ...idle(), forward: 1 }, PHYS.maxSpeed, TICK_DT);
+    expect(b.pos.y).toBeLessThan(0.01); // standing hull (1.83 m) can't fit
+    expect(b.pos.z).toBeGreaterThanOrEqual(-1.5 + PHYS.halfWidth - 1e-6);
+  });
+
   it('can jump onto a low crate but not a tall one', () => {
     for (const [h, ok] of [[1.0, true], [2.1, false]] as const) {
       const crate = { min: { x: -1, y: 0, z: -20 }, max: { x: 1, y: h, z: -1.5 } };
