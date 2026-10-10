@@ -20,19 +20,25 @@ early A: nearest teammate 5.1 m, within 3 m 54%, areas 2.09, biggest group 2.56,
 early D: nearest teammate 14.3 m, within 3 m 21%, areas 2.12, biggest group 1.44
 stuck (pressing keys, not moving) 6.7 bot-seconds/match, left the map 0 ticks
 
-=== AFTER (new AI) ===
-easy, 5v5, seeds 1..8 (2.5 s)
-matches 8, rounds 7.3, round length 25 s, kills/round 7.2, timeouts 0.0
-early A: nearest teammate 8.4 m, within 3 m 29%, areas 2.28, biggest group 1.88, lanes/round 2.05
-early D: nearest teammate 12.5 m, within 3 m 12%, areas 2.76, biggest group 1.38
-stuck (pressing keys, not moving) 10.4 bot-seconds/match, left the map 0 ticks
-normal, 5v5, seeds 1..8 (4.4 s)
-matches 8, rounds 7.3, round length 34 s, kills/round 7.4, timeouts 0.1
-early A: nearest teammate 12.3 m, within 3 m 10%, areas 2.75, biggest group 1.40, lanes/round 2.05
-early D: nearest teammate 12.4 m, within 3 m 11%, areas 2.69, biggest group 1.38
-stuck (pressing keys, not moving) 13.1 bot-seconds/match, left the map 0 ticks
-hard, 5v5, seeds 1..8 (3.1 s)
-matches 8, rounds 5.9, round length 22 s, kills/round 6.6, timeouts 0.0
-early A: nearest teammate 12.7 m, within 3 m 10%, areas 3.12, biggest group 1.45, lanes/round 2.16
-early D: nearest teammate 13.5 m, within 3 m 5%, areas 2.25, biggest group 1.18
-stuck (pressing keys, not moving) 9.6 bot-seconds/match, left the map 0 ticks
+=== AFTER (new AI, after the review fixes and the Middle pillar fix D4) ===
+easy, 5v5, seeds 1..8 (2.8 s)
+matches 8, rounds 6.1, round length 31 s, kills/round 7.1, timeouts 0.0
+early A: nearest teammate 13.6 m, within 3 m 15%, areas 2.90, biggest group 1.49, lanes/round 2.74
+early D: nearest teammate 13.9 m, within 3 m 10%, areas 2.70, biggest group 1.40
+whole A: nearest teammate 11.5 m, within 3 m 22%, areas 2.72, biggest group 1.73, lanes/round 2.74
+whole D: nearest teammate 11.5 m, within 3 m 14%, areas 2.69, biggest group 1.61
+stuck (pressing keys, not moving) 9.8 bot-seconds/match, left the map 0 ticks
+normal, 5v5, seeds 1..8 (3.9 s)
+matches 8, rounds 6.1, round length 31 s, kills/round 7.1, timeouts 0.0
+early A: nearest teammate 14.1 m, within 3 m 8%, areas 3.03, biggest group 1.33, lanes/round 2.71
+early D: nearest teammate 15.7 m, within 3 m 6%, areas 2.60, biggest group 1.22
+whole A: nearest teammate 11.9 m, within 3 m 15%, areas 2.81, biggest group 1.62, lanes/round 2.71
+whole D: nearest teammate 13.4 m, within 3 m 10%, areas 2.53, biggest group 1.41
+stuck (pressing keys, not moving) 10.7 bot-seconds/match, left the map 0 ticks
+hard, 5v5, seeds 1..8 (3.4 s)
+matches 8, rounds 5.6, round length 25 s, kills/round 6.6, timeouts 0.0
+early A: nearest teammate 14.6 m, within 3 m 11%, areas 3.04, biggest group 1.38, lanes/round 2.76
+early D: nearest teammate 16.3 m, within 3 m 6%, areas 2.39, biggest group 1.17
+whole A: nearest teammate 12.5 m, within 3 m 16%, areas 2.86, biggest group 1.67, lanes/round 2.76
+whole D: nearest teammate 12.6 m, within 3 m 12%, areas 2.48, biggest group 1.47
+stuck (pressing keys, not moving) 7.9 bot-seconds/match, left the map 0 ticks

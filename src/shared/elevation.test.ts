@@ -83,6 +83,25 @@ describe('elevation: map data', () => {
   });
 });
 
+describe('map: sightlines', () => {
+  it('no point of one spawn zone can see any point of the other at eye level', () => {
+    // The Mid -> Middle -> Mid Doors row once ran straight from spawn to spawn.
+    const eye = (x: number, z: number): Vec3 => {
+      const c = map.cellCenter(x, z);
+      return { x: c.x, y: c.y + PHYS.standEye, z: c.z };
+    };
+    const a = DEPOT.buyZones.A;
+    const d = DEPOT.buyZones.D;
+    const seen: string[] = [];
+    for (let ax = a.x0; ax <= a.x1; ax++)
+      for (let az = a.z0; az <= a.z1; az++)
+        for (let dx = d.x0; dx <= d.x1; dx++)
+          for (let dz = d.z0; dz <= d.z1; dz++)
+            if (map.world.lineOfSight(eye(ax, az), eye(dx, dz))) seen.push(`(${ax},${az})-(${dx},${dz})`);
+    expect(seen.slice(0, 5).join(' ')).toBe('');
+  });
+});
+
 describe('elevation: movement', () => {
   it('every Depot staircase can be walked up and back down without jumping', () => {
     for (const st of DEPOT.stairs ?? []) {

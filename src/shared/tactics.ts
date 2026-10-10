@@ -102,6 +102,10 @@ function build(map: MapData): TacticalMap {
     const out: Route[] = [];
     const cost = new Float32Array(cols * rows);
     const used = new Uint8Array(cols * rows);
+    // Never route through the other team's spawn: it's where they start.
+    const enemy: Team = team === 'A' ? 'D' : 'A';
+    const enemyZone = padRect(map.def.buyZones[enemy], 1);
+    for (let i = 0; i < cols * rows; i++) if (fromSpawn[enemy][i] < 14) cost[i] += 8;
     const nearEnds = (i: number) => fromSpawn[team][i] < 10 || map.inRect(center(i), padRect(map.def.bombsites[s], 2));
     for (let k = 0; k < 4 && out.length < 3; k++) {
       const cells = nav.findCells(spawn[team], site[s], cost);
@@ -109,8 +113,9 @@ function build(map: MapData): TacticalMap {
       // How much of this route runs through corridors earlier routes used?
       const middle = cells.filter((i) => !nearEnds(i));
       const shared = middle.filter((i) => used[i]).length;
-      const fresh = middle.length ? shared / middle.length < 0.6 : out.length === 0;
-      if (fresh) {
+      const fresh = middle.length ? shared / middle.length < 0.45 : out.length === 0;
+      const throughSpawn = cells.some((i) => map.inRect(center(i), enemyZone));
+      if (fresh && !throughSpawn) {
         const pts = cells.map(center);
         out.push({
           cells,
