@@ -697,6 +697,7 @@ export class GameSession {
       const pos = this.interp(p, alpha);
       const w = p.weapons[p.current];
       av.setWeapon(WEAPONS[w ? w.id : 'knife'].cls, w ? w.id : 'knife');
+      av.setBomb(p.alive && sim.bomb.state === 'carried' && sim.bomb.carrier === p.id);
       av.update(dt, { ...pos, yaw: p.yaw, pitch: p.pitch, speed: Math.hypot(p.body.vel.x, p.body.vel.z), crouched: p.body.crouched, alive: p.alive });
     }
     for (const id of r.avatarIds()) if (!present.has(id)) r.removeAvatar(id);
@@ -799,7 +800,7 @@ export class GameSession {
     else if (me.alive && sim.phase === 'live' && me.action === null) {
       if (sim.canPlant(me)) hint = 'Hold E to plant the bomb';
       else if (sim.canDefuse(me)) hint = me.kit ? 'Hold E to defuse (5 s with your kit)' : 'Hold E to defuse (10 s — a kit halves it)';
-      else if (sim.bomb.state === 'carried' && sim.bomb.carrier === me.id) hint = 'You have the bomb — take it to site A or B';
+      else if (sim.bomb.state === 'carried' && sim.bomb.carrier === me.id) hint = 'You have the bomb — take it to site A or B (G drops it)';
     }
     if (sim.phase === 'warmup') {
       hint = this.net

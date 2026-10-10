@@ -32,6 +32,8 @@ export class Avatar {
   private gun: THREE.Group | null = null;
   private gunCls: WeaponClass | null = null;
   readonly muzzle = new THREE.Object3D();
+  /** The bomb strapped to the carrier's back (shown to everyone, as in the classic game). */
+  private readonly pack: THREE.Group;
   private walkPhase = 0;
   private deathT = -1;
   private crouchBlend = 0;
@@ -72,6 +74,20 @@ export class Avatar {
     armL.position.set(-0.12, -0.04, -0.27);
     armL.rotation.y = -0.45;
     this.arms.add(armR, armL);
+    this.pack = new THREE.Group();
+    const casing = box(0.3, 0.24, 0.12, 0x4a4f36, 0);
+    const strap = box(0.32, 0.03, 0.13, 0x2a2620, 0.06);
+    const display = box(0.09, 0.05, 0.02, 0x2f6b3a, 0.04);
+    display.position.z = 0.065;
+    this.pack.add(casing, strap, display);
+    this.pack.position.set(0, 0.36, 0.2); // between the shoulder blades (the front is -z)
+    this.pack.visible = false;
+    this.upper.add(this.pack);
+  }
+
+  /** Shows or hides the bomb on this soldier's back. */
+  setBomb(carrying: boolean): void {
+    this.pack.visible = carrying;
   }
 
   setWeapon(cls: WeaponClass, id: string): void {

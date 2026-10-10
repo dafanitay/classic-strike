@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  // Shown on the main menu, so a player can tell which build they are running.
+  define: { __BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC') },
   server: {
     port: 5180,
     // In development the game server runs separately (npm run dev:server).

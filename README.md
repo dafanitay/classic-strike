@@ -38,7 +38,7 @@ Firefox), keyboard and mouse.
 
 WASD move · mouse aim · LMB fire · RMB scope / heavy stab · Space jump ·
 Shift walk (silent) · C crouch · R reload · 1/2/3 weapons ·
-B buy menu · E (hold) plant / defuse · Tab scoreboard · Esc pause (releases the mouse).
+B buy menu · E (hold) plant / defuse · G drop the bomb · Tab scoreboard · Esc pause (releases the mouse).
 
 Crouch is on **C**, not Ctrl, because Ctrl+W closes the browser tab.
 Weapons switch only with **1 / 2 / 3** (top row or numpad): the mouse wheel
@@ -76,7 +76,8 @@ Letting go cancels and the timer starts over.
   running out the clock without a plant. Once the bomb is down, dead
   Attackers no longer end the round.
 - If the carrier dies the bomb drops; any Attacker picks it up by walking
-  over it.
+  over it. The carrier can also throw it a step ahead with **G** for a
+  teammate. The bomb is visible on its carrier's back to everyone.
 - Money: planter +$300, defuser +$300; Attackers who planted but lost still
   get +$800 each on top of the loss bonus. The blast hurts everyone,
   Attackers included: lethal within about 7–11 m (depending on armour),

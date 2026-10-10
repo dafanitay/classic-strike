@@ -39,6 +39,8 @@ export interface PlayerCmd {
   slot: WeaponSlot | 0;
   /** Hold to plant (bomb carrier in a site) or defuse (defender at the bomb). */
   use: boolean;
+  /** Press (one tick) to throw the bomb a step ahead, if you carry it. */
+  drop?: boolean;
 }
 
 export const emptyCmd = (yaw = 0, pitch = 0): PlayerCmd => ({
@@ -262,6 +264,8 @@ export class Simulation {
   lastWinner: Team | null = null;
   lastReason = '';
   bomb: BombState = { state: 'none', carrier: 0, pos: { x: 0, y: 0, z: 0 }, site: null, plantedAt: 0, explodeAt: 0, defuser: 0 };
+  /** Who last threw the bomb, and until when they can't pick it back up. */
+  private dropGuard = { id: 0, until: 0 };
   private nextId = 1;
   private readonly rng: () => number;
   /**
@@ -554,6 +558,7 @@ export class Simulation {
       this.spawn(p, counters[p.team]++);
     }
     this.bomb = { state: 'none', carrier: 0, pos: { x: 0, y: 0, z: 0 }, site: null, plantedAt: 0, explodeAt: 0, defuser: 0 };
+    this.dropGuard = { id: 0, until: 0 };
     if (this.config.bomb) {
       const attackers = order.filter((p) => p.team === 'A');
       if (attackers.length) {
@@ -734,9 +739,11 @@ export class Simulation {
     if (!p.alive) return;
 
     this.tickAction(p, cmd);
+    if (cmd.drop && !p.action) this.throwBomb(p);
     if (this.bomb.state === 'dropped' && p.team === 'A' && this.phase === 'live') {
       const b = this.bomb.pos;
-      if (Math.hypot(p.body.pos.x - b.x, p.body.pos.z - b.z) <= BOMB.pickupReach && Math.abs(p.body.pos.y - b.y) < 1.5) {
+      const justThrown = this.dropGuard.id === p.id && this.time < this.dropGuard.until;
+      if (!justThrown && Math.hypot(p.body.pos.x - b.x, p.body.pos.z - b.z) <= BOMB.pickupReach && Math.abs(p.body.pos.y - b.y) < 1.5) {
         this.bomb.state = 'carried';
         this.bomb.carrier = p.id;
         this.events.push({ type: 'bombPickup', player: p.id });
@@ -793,6 +800,34 @@ export class Simulation {
     p.action = null;
     p.actionEnd = 0;
     p.useLatch = false;
+  }
+
+  /**
+   * The carrier throws the bomb about a metre ahead (G), for a teammate to
+   * pick up. It never lands inside a wall or crate: if the way ahead is
+   * blocked it drops at the carrier's feet. The thrower can't take it back
+   * for a second, so walking forward doesn't pick it straight up again.
+   */
+  private throwBomb(p: SimPlayer): void {
+    if (this.bomb.state !== 'carried' || this.bomb.carrier !== p.id) return;
+    const dir = { x: -Math.sin(p.yaw), z: -Math.cos(p.yaw) };
+    const from = { x: p.body.pos.x, y: p.body.pos.y + 0.5, z: p.body.pos.z };
+    let pos = { x: p.body.pos.x, y: this.map.surfaceY(p.body.pos), z: p.body.pos.z };
+    for (const reach of [1.3, 0.8]) {
+      const at = { x: from.x + dir.x * reach, z: from.z + dir.z * reach };
+      const c = this.map.cellOf(at);
+      if (!this.map.walkable(c.x, c.z)) continue;
+      // Clear of walls and crates at knee height, with a body's width of margin.
+      const probe = { x: at.x + dir.x * 0.25, y: from.y, z: at.z + dir.z * 0.25 };
+      if (!this.map.world.lineOfSight(from, probe)) continue;
+      pos = { x: at.x, y: this.map.surfaceY(at), z: at.z };
+      break;
+    }
+    this.bomb.state = 'dropped';
+    this.bomb.carrier = 0;
+    this.bomb.pos = pos;
+    this.dropGuard = { id: p.id, until: this.time + 1 };
+    this.events.push({ type: 'bombDrop', player: p.id, pos: { ...pos } });
   }
 
   /** Drops the bomb where its carrier stands (on death, leaving, team change). */

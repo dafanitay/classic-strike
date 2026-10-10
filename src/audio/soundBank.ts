@@ -92,7 +92,12 @@ export const GUN_RECIPES: Record<GunSoundId, GunRecipe> = {
 const VARIANTS = 3;
 
 type Make = (seconds: number, sampleRate: number) => OfflineAudioContext;
-const defaultMake: Make = (seconds, sr) => new OfflineAudioContext(1, Math.ceil(seconds * sr), sr);
+/** The offline renderer (older Safari only has the prefixed one). */
+export function offlineContextClass(): typeof OfflineAudioContext | undefined {
+  const w = globalThis as unknown as { OfflineAudioContext?: typeof OfflineAudioContext; webkitOfflineAudioContext?: typeof OfflineAudioContext };
+  return w.OfflineAudioContext ?? w.webkitOfflineAudioContext;
+}
+const defaultMake: Make = (seconds, sr) => new (offlineContextClass()!)(1, Math.ceil(seconds * sr), sr);
 
 /** Small seeded generator so variants differ but the bank is reproducible. */
 function rng(seed: number): () => number {

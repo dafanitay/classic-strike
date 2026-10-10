@@ -30,6 +30,7 @@ button { font-family: var(--font); }
 .menu { width: 380px; max-width: calc(100vw - 32px); }
 .title { font-family: Impact, 'Arial Black', var(--font); font-size: 56px; letter-spacing: 3px; color: #e9dfc0; margin: 0 0 2px; text-shadow: 0 2px 0 #000; }
 .subtitle { color: var(--muted); margin: 0 0 34px; letter-spacing: 1px; text-transform: uppercase; font-size: 11px; }
+.build { position: fixed; right: 12px; bottom: 8px; margin: 0; color: var(--muted); font-size: 10px; opacity: 0.7; }
 .menu-btn { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); font-size: 17px; letter-spacing: 1px; padding: 7px 0; cursor: pointer; text-transform: uppercase; }
 .menu-btn:hover, .menu-btn:focus-visible { color: #fff; outline: none; }
 .menu-btn:hover::before, .menu-btn:focus-visible::before { content: '› '; color: var(--amber); }

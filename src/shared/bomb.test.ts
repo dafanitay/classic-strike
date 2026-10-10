@@ -73,6 +73,68 @@ describe('bomb: carrying and dropping', () => {
   });
 });
 
+describe('bomb: throwing it (G)', () => {
+  const drop = (yaw: number): PlayerCmd => ({ ...emptyCmd(yaw), drop: true });
+
+  it('lands about a metre ahead; a teammate picks it up, the thrower only after a second', () => {
+    const { sim, a1, a2 } = live();
+    place(sim, a1, 10, 3); // Long A runs east-west
+    const east = -Math.PI / 2; // forward is (-sin yaw, -cos yaw)
+    a1.yaw = east;
+    const ev = run(sim, TICK_DT, new Map([[a1, drop(east)]]));
+    expect(sim.bomb.state).toBe('dropped');
+    expect(ev.some((e) => e.type === 'bombDrop' && e.player === a1.id)).toBe(true);
+    expect(sim.bomb.pos.x - a1.body.pos.x).toBeGreaterThan(1);
+    expect(Math.abs(sim.bomb.pos.z - a1.body.pos.z)).toBeLessThan(0.05);
+    // Walking straight onto it doesn't take it back at once...
+    a1.body.pos = { ...sim.bomb.pos };
+    run(sim, 0.5);
+    expect(sim.bomb.state).toBe('dropped');
+    // ...but a teammate can, right away.
+    place(sim, a2, 0, 0);
+    a2.body.pos = { ...sim.bomb.pos, x: sim.bomb.pos.x + 0.3 };
+    run(sim, 0.1);
+    expect(sim.bomb.carrier).toBe(a2.id);
+  });
+
+  it('the thrower can take it back after a second', () => {
+    const { sim, a1 } = live();
+    place(sim, a1, 10, 3);
+    run(sim, TICK_DT, new Map([[a1, drop(-Math.PI / 2)]]));
+    a1.body.pos = { ...sim.bomb.pos };
+    run(sim, 1.1);
+    expect(sim.bomb.carrier).toBe(a1.id);
+  });
+
+  it('never lands inside a wall: facing one, it drops at the feet', () => {
+    const { sim, a1 } = live();
+    place(sim, a1, 12, 2, 0, -0.5); // against Long A's north wall
+    run(sim, TICK_DT, new Map([[a1, drop(0)]])); // yaw 0 faces north (-z)
+    expect(sim.bomb.state).toBe('dropped');
+    const c = map.cellOf(sim.bomb.pos);
+    expect(map.walkable(c.x, c.z)).toBe(true);
+    expect(Math.hypot(sim.bomb.pos.x - a1.body.pos.x, sim.bomb.pos.z - a1.body.pos.z)).toBeLessThan(0.05);
+  });
+
+  it('does nothing for anyone but the carrier, or while planting', () => {
+    const { sim, a1, a2, d1 } = live();
+    run(sim, TICK_DT, new Map([[a2, drop(0)], [d1, drop(0)]]));
+    expect(sim.bomb.state).toBe('carried');
+    place(sim, a1, siteA.x, siteA.z);
+    run(sim, 0.5, new Map([[a1, use()]]));
+    expect(a1.action).toBe('plant');
+    run(sim, TICK_DT, new Map([[a1, use({ drop: true })]]));
+    expect(sim.bomb.state).toBe('carried');
+  });
+
+  it('the drop flag survives the network parser, and only as a real boolean', () => {
+    const m = parseClientMsg(JSON.stringify({ t: 'cmd', seq: 1, cmd: { ...emptyCmd(), drop: true } }));
+    expect(m && m.t === 'cmd' && m.cmd.drop).toBe(true);
+    const n = parseClientMsg(JSON.stringify({ t: 'cmd', seq: 1, cmd: { ...emptyCmd(), drop: 1 } }));
+    expect(n && n.t === 'cmd' && n.cmd.drop).toBe(false);
+  });
+});
+
 describe('bomb: planting', () => {
   it('takes 3.2 s of holding use inside a site, standing still, and pays the planter', () => {
     const { sim, a1 } = live();

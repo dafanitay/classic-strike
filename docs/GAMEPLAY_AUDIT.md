@@ -232,3 +232,37 @@ Remaining:
   moment.
 - Nobody has played against these bots yet. Whether they *feel* human is a
   manual test still to do.
+
+## Defender balance: investigated, not changed (needs an owner decision)
+
+Defenders win 30% of rounds at normal and 27% at hard (16 matches each,
+5v5, first to 8). Measured on main after the M3 bot work.
+
+How the kills happen (6 normal matches, 501 kills):
+
+- About 70% of killers are moving when they fire, and so are most
+  victims. Holding an angle buys a Defender nothing, because every bot
+  strafes in a fight.
+- 192 of 501 victims died while retreating to cover.
+- Attackers' AR-7 has 221 kills against 150 for the Defenders' K4. More
+  Defender kills come with the P9 and MK-5: the K4 costs $400 more, so
+  Defenders buy rifles less often.
+
+Three AI-only changes were tried and measured (Defender round wins, 16
+matches each):
+
+| Variant | normal | hard |
+|---|---|---|
+| main | 30% | 27% |
+| retreat only to cover 2–6 m away (was 3–11 m) | 26% | 30% |
+| that, plus Defenders hold an angle: no strafing, crouch at range | 23% | 34% |
+| hold an angle, plus a pre-aim reaction bonus (×0.55 when the enemy appears within 25° of where the holder looks) | 24% | 27% |
+
+None raises normal; some help hard and hurt normal. All were reverted,
+since none is a clear improvement. The bot-side levers are exhausted.
+What's left is a product decision, because weapon and economy balance
+are not to be changed silently:
+
+- Price the K4 like the AR-7 ($2700), or raise the Defender loss bonus.
+- Map: give Defenders a little more time to reach the sites. Defender
+  Spawn is already between them, so this is the smallest lever.
