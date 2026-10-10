@@ -73,4 +73,25 @@ describe('bots', () => {
     }
     expect(hardWins).toBeGreaterThanOrEqual(3);
   }, 120_000);
+
+  it('play the bomb objective: carry it to a site, plant, fetch it when dropped, defuse', () => {
+    const sim = new Simulation(buildMap(DEPOT), { roundsToWin: 8 }, 1);
+    const bots = new BotDirector(sim, 'easy');
+    for (let i = 0; i < 5; i++) {
+      sim.addPlayer(BotDirector.botName('A', i), 'A', true);
+      sim.addPlayer(BotDirector.botName('D', i), 'D', true);
+    }
+    const count: Record<string, number> = {};
+    for (let t = 0; t < TICK_RATE * 60 * 40 && sim.phase !== 'matchEnd'; t++) {
+      bots.update();
+      sim.events.length = 0;
+      sim.tick();
+      bots.observe(sim.events);
+      for (const e of sim.events) count[e.type] = (count[e.type] ?? 0) + 1;
+    }
+    expect(sim.phase).toBe('matchEnd');
+    expect(count.planted ?? 0).toBeGreaterThanOrEqual(2);
+    expect(count.defused ?? 0).toBeGreaterThanOrEqual(1);
+    expect(count.bombPickup ?? 0).toBeGreaterThanOrEqual(1);
+  }, 120_000);
 });
