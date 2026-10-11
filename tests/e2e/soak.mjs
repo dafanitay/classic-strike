@@ -20,6 +20,7 @@ const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+page.on('crash', () => console.log('PAGE CRASHED (renderer process died)'));
 await page.addInitScript(() => localStorage.setItem('classic-strike.settings.v1', JSON.stringify({ quality: 'medium' })));
 await page.goto(base + '/?debug=1');
 await page.click('text=Play Solo'); // also unlocks audio (a real click)
@@ -71,6 +72,8 @@ for (let i = 0; i < rounds; i++) {
     }
   });
   samples.push(await sample());
+  const s = samples[samples.length - 1];
+  console.log(`round ${s.round}: heap ${s.heapMB.toFixed(1)} MB, geo ${s.geometries}, tex ${s.textures}, objects ${s.objects}, effects ${s.effects}, voices ${s.voices}, dom ${s.dom}`);
 }
 const secs = (Date.now() - t0) / 1000;
 console.log('round  heapMB  geo  tex  prog  objects  effects  voices  dom');

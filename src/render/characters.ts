@@ -92,7 +92,18 @@ export class Avatar {
 
   setWeapon(cls: WeaponClass, id: string): void {
     if (this.gunCls === cls && this.gun?.userData.id === id) return;
-    if (this.gun) this.arms.remove(this.gun);
+    if (this.gun) {
+      // Free the old model: every weapon change (each buy, pick-up and
+      // switch, for every soldier) otherwise left its geometry on the GPU.
+      this.arms.remove(this.gun);
+      this.gun.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) {
+          m.geometry.dispose();
+          (m.material as THREE.Material).dispose();
+        }
+      });
+    }
     this.gun = gunModel(id, cls, false);
     this.gun.userData.id = id;
     this.gun.scale.setScalar(0.85);
